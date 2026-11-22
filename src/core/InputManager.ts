@@ -1,13 +1,24 @@
 export class InputManager {
-  // Key states
+  // Movement states
   public forward: boolean = false;
   public backward: boolean = false;
   public left: boolean = false;
   public right: boolean = false;
   public sprint: boolean = false;
+  public crouch: boolean = false;
   public jumpPressed: boolean = false;
   public reloadPressed: boolean = false;
-  
+
+  // Actions
+  public interactPressed: boolean = false;
+  public flashlightPressed: boolean = false;
+  public meleePressed: boolean = false;
+  public grenadePressed: boolean = false;
+  public quickActionPressed: boolean = false;
+  public weapon1Pressed: boolean = false;
+  public weapon2Pressed: boolean = false;
+  public tabPressed: boolean = false;
+
   // Mouse states
   public isAiming: boolean = false;
   public shootJustPressed: boolean = false;
@@ -33,19 +44,13 @@ export class InputManager {
   }
 
   private setupListeners(): void {
-    // Keyboard events
     window.addEventListener('keydown', (e: KeyboardEvent) => this.onKeyDown(e));
     window.addEventListener('keyup', (e: KeyboardEvent) => this.onKeyUp(e));
-
-    // Mouse movement
     window.addEventListener('mousemove', (e: MouseEvent) => this.onMouseMove(e));
-
-    // Mouse buttons
     window.addEventListener('mousedown', (e: MouseEvent) => this.onMouseDown(e));
     window.addEventListener('mouseup', (e: MouseEvent) => this.onMouseUp(e));
     window.addEventListener('contextmenu', (e: MouseEvent) => e.preventDefault());
 
-    // Pointer lock change
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = document.pointerLockElement === this.domElement;
       if (this.onPointerLockChange) {
@@ -59,9 +64,7 @@ export class InputManager {
       try {
         const res = this.domElement.requestPointerLock() as unknown as Promise<void> | undefined;
         if (res && typeof res.catch === 'function') {
-          res.catch((_err) => {
-            // Suppress headless or permission gesture rejection
-          });
+          res.catch(() => {});
         }
       } catch (err) {
         // Suppress
@@ -80,14 +83,14 @@ export class InputManager {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
-    if (e.repeat) return;
-
     if (e.code === 'Escape') {
       if (this.onPauseRequested) {
         this.onPauseRequested();
       }
       return;
     }
+
+    if (e.repeat) return;
 
     switch (e.code) {
       case 'KeyW':
@@ -110,11 +113,41 @@ export class InputManager {
       case 'ShiftRight':
         this.sprint = true;
         break;
+      case 'ControlLeft':
+      case 'ControlRight':
+      case 'KeyC':
+        this.crouch = !this.crouch; // Toggle crouch or hold
+        break;
       case 'Space':
         this.jumpPressed = true;
         break;
       case 'KeyR':
         this.reloadPressed = true;
+        break;
+      case 'KeyE':
+        this.interactPressed = true;
+        break;
+      case 'KeyF':
+        this.flashlightPressed = true;
+        break;
+      case 'KeyV':
+        this.meleePressed = true;
+        break;
+      case 'KeyG':
+        this.grenadePressed = true;
+        break;
+      case 'KeyQ':
+        this.quickActionPressed = true;
+        break;
+      case 'Digit1':
+        this.weapon1Pressed = true;
+        break;
+      case 'Digit2':
+        this.weapon2Pressed = true;
+        break;
+      case 'Tab':
+        e.preventDefault();
+        this.tabPressed = true;
         break;
     }
   }
@@ -155,10 +188,10 @@ export class InputManager {
   private onMouseDown(e: MouseEvent): void {
     if (!this.pointerLocked) return;
 
-    if (e.button === 0) { // Left click
+    if (e.button === 0) {
       this.shootJustPressed = true;
       this.isShooting = true;
-    } else if (e.button === 2) { // Right click
+    } else if (e.button === 2) {
       this.isAiming = true;
     }
   }
@@ -171,13 +204,20 @@ export class InputManager {
     }
   }
 
-  // Call at end of each frame to reset one-shot inputs
   public resetFrameDeltas(): void {
     this.deltaX = 0;
     this.deltaY = 0;
     this.shootJustPressed = false;
     this.jumpPressed = false;
     this.reloadPressed = false;
+    this.interactPressed = false;
+    this.flashlightPressed = false;
+    this.meleePressed = false;
+    this.grenadePressed = false;
+    this.quickActionPressed = false;
+    this.weapon1Pressed = false;
+    this.weapon2Pressed = false;
+    this.tabPressed = false;
   }
 
   public resetAll(): void {
@@ -186,12 +226,9 @@ export class InputManager {
     this.left = false;
     this.right = false;
     this.sprint = false;
-    this.jumpPressed = false;
-    this.reloadPressed = false;
+    this.crouch = false;
+    this.resetFrameDeltas();
     this.isAiming = false;
-    this.shootJustPressed = false;
     this.isShooting = false;
-    this.deltaX = 0;
-    this.deltaY = 0;
   }
 }

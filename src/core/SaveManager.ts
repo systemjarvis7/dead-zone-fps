@@ -1,7 +1,7 @@
-import { PlayerStats, GameSettings, getXPForNextLevel } from './Types';
+import { PlayerStats, GameSettings, getXPForNextLevel, TimeOfDay, GraphicsQuality } from './Types';
 
-const STATS_KEY = 'dead_zone_stats_v1';
-const SETTINGS_KEY = 'dead_zone_settings_v1';
+const STATS_KEY = 'dead_zone_stats_v2';
+const SETTINGS_KEY = 'dead_zone_settings_v2';
 
 export class SaveManager {
   private static defaultStats: PlayerStats = {
@@ -17,8 +17,11 @@ export class SaveManager {
     mouseSensitivity: 0.0022,
     masterVolume: 0.8,
     sfxVolume: 0.8,
+    ambientVolume: 0.6,
     fov: 75,
-    invertY: false
+    invertY: false,
+    timeOfDay: TimeOfDay.DUSK,
+    graphicsQuality: GraphicsQuality.HIGH
   };
 
   public static loadStats(): PlayerStats {

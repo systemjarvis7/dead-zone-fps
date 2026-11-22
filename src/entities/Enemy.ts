@@ -12,7 +12,7 @@ export class Enemy {
   // Stats
   public health: number = 100;
   public maxHealth: number = 100;
-  public speed: number = 2.2;
+  public speed: number = 2.4;
   public damage: number = 10;
   public attackRange: number = 1.8;
   public attackCooldown: number = 1.2;
@@ -23,27 +23,26 @@ export class Enemy {
   private attackTimer: number = 0;
   private walkCycleTimer: number = 0;
   private hurtTimer: number = 0;
+  private headshotFlinchTimer: number = 0;
   private deathTimer: number = 0;
   public shouldRemove: boolean = false;
 
-  // Visual meshes for animation
-  private headMesh!: THREE.Mesh;
+  // Visual meshes for realistic character animation
+  public headMesh!: THREE.Mesh;
   private torsoMesh!: THREE.Mesh;
-  private leftArm!: THREE.Group;
-  private rightArm!: THREE.Group;
-  private leftLeg!: THREE.Group;
-  private rightLeg!: THREE.Group;
+  private leftArmGroup!: THREE.Group;
+  private rightArmGroup!: THREE.Group;
+  private leftLegGroup!: THREE.Group;
+  private rightLegGroup!: THREE.Group;
   private materials: THREE.MeshStandardMaterial[] = [];
   private originalColors: number[] = [];
 
   // Growl timer
   private growlTimer: number = 0;
-
-  // Knockback velocity
   private knockback = new THREE.Vector3();
 
   // Callbacks
-  public onAttackPlayer?: (damage: number) => void;
+  public onAttackPlayer?: (damage: number, attackerPos: THREE.Vector3) => void;
   public onDeath?: (enemy: Enemy) => void;
 
   constructor(
@@ -59,9 +58,8 @@ export class Enemy {
     this.group.position.copy(spawnPos);
 
     this.configureStats();
-    this.buildModel();
+    this.buildRealisticCharacter();
 
-    // Randomize initial growl timer
     this.growlTimer = 2.0 + Math.random() * 5.0;
   }
 
@@ -76,10 +74,10 @@ export class Enemy {
     } else if (this.type === EnemyType.FAST) {
       this.health = 60;
       this.maxHealth = 60;
-      this.speed = 4.8;
+      this.speed = 4.9;
       this.damage = 15;
       this.attackRange = 1.6;
-      this.attackCooldown = 0.9;
+      this.attackCooldown = 0.85;
     } else { // BOSS
       this.health = 400;
       this.maxHealth = 400;
@@ -90,144 +88,184 @@ export class Enemy {
     }
   }
 
-  private buildModel(): void {
-    const scale = this.type === EnemyType.BOSS ? 1.7 : 1.0;
+  private buildRealisticCharacter(): void {
+    const scale = this.type === EnemyType.BOSS ? 1.75 : 1.0;
 
-    // Skin & Clothes colors based on type
-    let skinColor = 0x5a7052; // Rotten greenish-grey
-    let clothesColor = 0x3d3835; // Dirt brown
-    let pantsColor = 0x272c30; // Dark grey
-    let eyeColor = 0xffe600; // Glowing yellow eyes
+    // Random visual clothing variations
+    const clothPalettes = [
+      { shirt: 0x4a2e2b, pants: 0x22262b }, // bloody plaid & dark jeans
+      { shirt: 0x3d4336, pants: 0x1f1f20 }, // decayed worker jacket
+      { shirt: 0x2e3b44, pants: 0x28231e }, // ragged flannel & khaki
+      { shirt: 0x473335, pants: 0x17181c }  // stained tee & torn black
+    ];
+    const chosenPalette = clothPalettes[Math.floor(Math.random() * clothPalettes.length)];
+
+    let skinColor = 0x546650;
+    let shirtColor = chosenPalette.shirt;
+    let pantsColor = chosenPalette.pants;
+    let eyeColor = 0xffeb3b;
 
     if (this.type === EnemyType.FAST) {
-      skinColor = 0x8a3832; // Bloody mutated flesh
-      clothesColor = 0x221a1a;
-      pantsColor = 0x1a1515;
-      eyeColor = 0xff2200; // Glowing red eyes
+      skinColor = 0x8a322c; // Mutated bloody red flesh
+      shirtColor = 0x241818;
+      pantsColor = 0x151212;
+      eyeColor = 0xff1744; // Crimson glowing
     } else if (this.type === EnemyType.BOSS) {
-      skinColor = 0x3e4a42; // Heavy armored mutate
-      clothesColor = 0x1f1f24;
-      pantsColor = 0x151618;
-      eyeColor = 0xff0044; // Crimson glowing
+      skinColor = 0x37423b; // Thick armored mutant hide
+      shirtColor = 0x1b1c1e;
+      pantsColor = 0x111214;
+      eyeColor = 0xff0055;
     }
 
-    const skinMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.8 });
-    const clothesMat = new THREE.MeshStandardMaterial({ color: clothesColor, roughness: 0.9 });
-    const pantsMat = new THREE.MeshStandardMaterial({ color: pantsColor, roughness: 0.9 });
+    const skinMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.82 });
+    const shirtMat = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.88 });
+    const pantsMat = new THREE.MeshStandardMaterial({ color: pantsColor, roughness: 0.92 });
+    const bootMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
     const eyeMat = new THREE.MeshBasicMaterial({ color: eyeColor });
 
-    this.materials.push(skinMat, clothesMat, pantsMat);
-    this.originalColors.push(skinColor, clothesColor, pantsColor);
+    this.materials.push(skinMat, shirtMat, pantsMat, bootMat);
+    this.originalColors.push(skinColor, shirtColor, pantsColor, 0x1a1a1a);
 
-    // Torso
-    const torsoGeo = new THREE.BoxGeometry(0.55 * scale, 0.75 * scale, 0.3 * scale);
-    this.torsoMesh = new THREE.Mesh(torsoGeo, clothesMat);
+    // 1. Torso with angled chest
+    const torsoGeo = new THREE.BoxGeometry(0.56 * scale, 0.78 * scale, 0.32 * scale);
+    this.torsoMesh = new THREE.Mesh(torsoGeo, shirtMat);
     this.torsoMesh.position.y = 1.15 * scale;
     this.torsoMesh.castShadow = true;
     this.group.add(this.torsoMesh);
 
-    // Head (named 'Head' for hit detection)
-    const headGeo = new THREE.BoxGeometry(0.35 * scale, 0.38 * scale, 0.35 * scale);
+    // 2. Head & Jaw (named 'Head' for hit detection)
+    const headGeo = new THREE.BoxGeometry(0.36 * scale, 0.4 * scale, 0.36 * scale);
     this.headMesh = new THREE.Mesh(headGeo, skinMat);
     this.headMesh.name = 'Head';
-    this.headMesh.position.set(0, 1.72 * scale, 0);
+    this.headMesh.position.set(0, 1.74 * scale, 0);
     this.headMesh.castShadow = true;
     this.group.add(this.headMesh);
 
-    // Glowing Eyes
-    const eyeGeo = new THREE.BoxGeometry(0.07 * scale, 0.05 * scale, 0.04 * scale);
+    // Sunken Glowing Eyes
+    const eyeGeo = new THREE.BoxGeometry(0.065 * scale, 0.05 * scale, 0.04 * scale);
     const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-    leftEye.position.set(-0.09 * scale, 1.75 * scale, 0.17 * scale);
+    leftEye.position.set(-0.09 * scale, 1.77 * scale, 0.175 * scale);
     this.group.add(leftEye);
 
     const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-    rightEye.position.set(0.09 * scale, 1.75 * scale, 0.17 * scale);
+    rightEye.position.set(0.09 * scale, 1.77 * scale, 0.175 * scale);
     this.group.add(rightEye);
 
-    // Left Arm (pivot at shoulder)
-    this.leftArm = new THREE.Group();
-    this.leftArm.position.set(-0.35 * scale, 1.45 * scale, 0);
-    const armGeo = new THREE.BoxGeometry(0.18 * scale, 0.65 * scale, 0.18 * scale);
-    const leftArmMesh = new THREE.Mesh(armGeo, skinMat);
-    leftArmMesh.position.y = -0.3 * scale;
-    leftArmMesh.castShadow = true;
-    this.leftArm.add(leftArmMesh);
-    this.group.add(this.leftArm);
+    // Jaw / Teeth
+    const jaw = new THREE.Mesh(
+      new THREE.BoxGeometry(0.24 * scale, 0.12 * scale, 0.15 * scale),
+      skinMat
+    );
+    jaw.position.set(0, 1.58 * scale, 0.12 * scale);
+    this.group.add(jaw);
 
-    // Right Arm (pivot at shoulder)
-    this.rightArm = new THREE.Group();
-    this.rightArm.position.set(0.35 * scale, 1.45 * scale, 0);
-    const rightArmMesh = new THREE.Mesh(armGeo, skinMat);
-    rightArmMesh.position.y = -0.3 * scale;
-    rightArmMesh.castShadow = true;
-    this.rightArm.add(rightArmMesh);
-    this.group.add(this.rightArm);
+    // 3. Left Arm with Elbow & Claw Hand
+    this.leftArmGroup = new THREE.Group();
+    this.leftArmGroup.position.set(-0.36 * scale, 1.48 * scale, 0);
 
-    // Left Leg (pivot at hip)
-    this.leftLeg = new THREE.Group();
-    this.leftLeg.position.set(-0.16 * scale, 0.75 * scale, 0);
-    const legGeo = new THREE.BoxGeometry(0.2 * scale, 0.75 * scale, 0.22 * scale);
-    const leftLegMesh = new THREE.Mesh(legGeo, pantsMat);
-    leftLegMesh.position.y = -0.36 * scale;
-    leftLegMesh.castShadow = true;
-    this.leftLeg.add(leftLegMesh);
-    this.group.add(this.leftLeg);
+    const upperArm = new THREE.Mesh(new THREE.BoxGeometry(0.18 * scale, 0.42 * scale, 0.18 * scale), shirtMat);
+    upperArm.position.y = -0.2 * scale;
+    upperArm.castShadow = true;
+    this.leftArmGroup.add(upperArm);
 
-    // Right Leg (pivot at hip)
-    this.rightLeg = new THREE.Group();
-    this.rightLeg.position.set(0.16 * scale, 0.75 * scale, 0);
-    const rightLegMesh = new THREE.Mesh(legGeo, pantsMat);
-    rightLegMesh.position.y = -0.36 * scale;
-    rightLegMesh.castShadow = true;
-    this.rightLeg.add(rightLegMesh);
-    this.group.add(this.rightLeg);
+    const lowerArm = new THREE.Mesh(new THREE.BoxGeometry(0.16 * scale, 0.42 * scale, 0.16 * scale), skinMat);
+    lowerArm.position.y = -0.56 * scale;
+    lowerArm.position.z = 0.08 * scale;
+    lowerArm.rotation.x = -0.3;
+    lowerArm.castShadow = true;
+    this.leftArmGroup.add(lowerArm);
+    this.group.add(this.leftArmGroup);
+
+    // 4. Right Arm with Elbow & Claw Hand
+    this.rightArmGroup = new THREE.Group();
+    this.rightArmGroup.position.set(0.36 * scale, 1.48 * scale, 0);
+
+    const rightUpper = new THREE.Mesh(new THREE.BoxGeometry(0.18 * scale, 0.42 * scale, 0.18 * scale), shirtMat);
+    rightUpper.position.y = -0.2 * scale;
+    rightUpper.castShadow = true;
+    this.rightArmGroup.add(rightUpper);
+
+    const rightLower = new THREE.Mesh(new THREE.BoxGeometry(0.16 * scale, 0.42 * scale, 0.16 * scale), skinMat);
+    rightLower.position.y = -0.56 * scale;
+    rightLower.position.z = 0.08 * scale;
+    rightLower.rotation.x = -0.3;
+    rightLower.castShadow = true;
+    this.rightArmGroup.add(rightLower);
+    this.group.add(this.rightArmGroup);
+
+    // 5. Left Leg with Boot
+    this.leftLegGroup = new THREE.Group();
+    this.leftLegGroup.position.set(-0.16 * scale, 0.76 * scale, 0);
+
+    const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2 * scale, 0.76 * scale, 0.22 * scale), pantsMat);
+    leftLeg.position.y = -0.38 * scale;
+    leftLeg.castShadow = true;
+    this.leftLegGroup.add(leftLeg);
+
+    const leftBoot = new THREE.Mesh(new THREE.BoxGeometry(0.22 * scale, 0.16 * scale, 0.3 * scale), bootMat);
+    leftBoot.position.set(0, -0.72 * scale, 0.04 * scale);
+    this.leftLegGroup.add(leftBoot);
+    this.group.add(this.leftLegGroup);
+
+    // 6. Right Leg with Boot
+    this.rightLegGroup = new THREE.Group();
+    this.rightLegGroup.position.set(0.16 * scale, 0.76 * scale, 0);
+
+    const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2 * scale, 0.76 * scale, 0.22 * scale), pantsMat);
+    rightLeg.position.y = -0.38 * scale;
+    rightLeg.castShadow = true;
+    this.rightLegGroup.add(rightLeg);
+
+    const rightBoot = new THREE.Mesh(new THREE.BoxGeometry(0.22 * scale, 0.16 * scale, 0.3 * scale), bootMat);
+    rightBoot.position.set(0, -0.72 * scale, 0.04 * scale);
+    this.rightLegGroup.add(rightBoot);
+    this.group.add(this.rightLegGroup);
   }
 
   public takeDamage(amount: number, isHeadshot: boolean = false): void {
     if (this.isDead) return;
 
     this.health -= amount;
-    this.hurtTimer = 0.12;
+    this.hurtTimer = 0.14;
 
-    // Flash materials bright red
     for (const mat of this.materials) {
       mat.color.setHex(0xff1111);
+    }
+
+    if (isHeadshot) {
+      this.headshotFlinchTimer = 0.22;
+      this.headMesh.rotation.x = -0.45; // Head snaps back
     }
 
     if (this.health <= 0) {
       this.health = 0;
       this.isDead = true;
       this.audio.playZombieDeath();
-
       if (this.onDeath) {
         this.onDeath(this);
       }
     } else {
-      // Audio hurt groan
-      if (Math.random() > 0.4) {
+      if (Math.random() > 0.35) {
         const pitch = this.type === EnemyType.FAST ? 1.4 : this.type === EnemyType.BOSS ? 0.6 : 1.0;
-        this.audio.playZombieGrowl(pitch);
+        this.audio.playZombieGrowl(pitch, 5);
       }
     }
   }
 
   public applyKnockback(dir: THREE.Vector3, force: number = 3.5): void {
-    if (this.type === EnemyType.BOSS) force *= 0.3; // Boss resists knockback
+    if (this.type === EnemyType.BOSS) force *= 0.3;
     this.knockback.copy(dir.normalize()).multiplyScalar(force);
   }
 
-  public update(delta: number, playerPos: THREE.Vector3, otherEnemies: Enemy[]): void {
-    // 1. Handle Death State & Sink Animation
+  public update(delta: number, playerPos: THREE.Vector3, otherEnemies: Enemy[], isPlayerCrouched: boolean = false): void {
+    // 1. Death Animation & Sink
     if (this.isDead) {
       this.deathTimer += delta;
-
-      // Collapse backwards
-      if (this.deathTimer < 0.6) {
+      if (this.deathTimer < 0.65) {
         this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, -Math.PI / 2, 8 * delta);
         this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, 0.2, 8 * delta);
       } else if (this.deathTimer > 2.5) {
-        // Sink into ground
-        this.group.position.y -= delta * 0.4;
+        this.group.position.y -= delta * 0.45;
         if (this.deathTimer > 4.5) {
           this.shouldRemove = true;
         }
@@ -235,7 +273,7 @@ export class Enemy {
       return;
     }
 
-    // 2. Hurt Color Recovery
+    // 2. Hurt Color & Flinch Recovery
     if (this.hurtTimer > 0) {
       this.hurtTimer -= delta;
       if (this.hurtTimer <= 0) {
@@ -245,23 +283,26 @@ export class Enemy {
       }
     }
 
-    // 3. Ambient growls
-    this.growlTimer -= delta;
-    if (this.growlTimer <= 0) {
-      const distToPlayer = this.group.position.distanceTo(playerPos);
-      if (distToPlayer < 25) {
-        const pitch = this.type === EnemyType.FAST ? 1.3 : this.type === EnemyType.BOSS ? 0.6 : 1.0;
-        this.audio.playZombieGrowl(pitch);
-      }
-      this.growlTimer = 4.0 + Math.random() * 6.0;
+    if (this.headshotFlinchTimer > 0) {
+      this.headshotFlinchTimer -= delta;
+      this.headMesh.rotation.x = THREE.MathUtils.lerp(this.headMesh.rotation.x, 0, 10 * delta);
     }
 
-    // 4. Direction & Distance to Player
+    // 3. Ambient Vocalizations (Spatial scaling)
+    this.growlTimer -= delta;
     const toPlayer = new THREE.Vector3().subVectors(playerPos, this.group.position);
     toPlayer.y = 0;
     const distanceToPlayer = toPlayer.length();
 
-    // 5. Attack Logic
+    if (this.growlTimer <= 0) {
+      if (distanceToPlayer < 35) {
+        const pitch = this.type === EnemyType.FAST ? 1.3 : this.type === EnemyType.BOSS ? 0.65 : 1.0;
+        this.audio.playZombieGrowl(pitch, distanceToPlayer);
+      }
+      this.growlTimer = 3.5 + Math.random() * 5.5;
+    }
+
+    // 4. Attack Logic
     if (this.attackTimer > 0) {
       this.attackTimer -= delta;
     }
@@ -269,21 +310,20 @@ export class Enemy {
     const inAttackRange = distanceToPlayer <= this.attackRange;
 
     if (inAttackRange && this.attackTimer <= 0) {
-      // Execute attack
       this.attackTimer = this.attackCooldown;
-      const pitch = this.type === EnemyType.FAST ? 1.3 : this.type === EnemyType.BOSS ? 0.7 : 1.0;
+      const pitch = this.type === EnemyType.FAST ? 1.35 : this.type === EnemyType.BOSS ? 0.7 : 1.0;
       this.audio.playZombieAttack(pitch);
 
       if (this.onAttackPlayer) {
-        this.onAttackPlayer(this.damage);
+        this.onAttackPlayer(this.damage, this.group.position);
       }
     }
 
-    // 6. Navigation, Steering & Wall Avoidance
+    // 5. Navigation & Movement
     if (!inAttackRange) {
       const moveDir = toPlayer.clone().normalize();
 
-      // Steering away from obstacles (Whiskers Raycasting / Sphere Probes)
+      // Whisker wall avoidance
       const probeLeft = new THREE.Vector3(
         this.group.position.x - moveDir.z * 1.0 + moveDir.x * 1.5,
         1.0,
@@ -295,16 +335,16 @@ export class Enemy {
         this.group.position.z - moveDir.x * 1.0 + moveDir.z * 1.5
       );
 
-      const colLeft = this.environment.checkSphereCollision(probeLeft, 0.4);
-      const colRight = this.environment.checkSphereCollision(probeRight, 0.4);
+      const colL = this.environment.checkSphereCollision(probeLeft, 0.4);
+      const colR = this.environment.checkSphereCollision(probeRight, 0.4);
 
-      if (colLeft.hit && !colRight.hit) {
-        moveDir.add(new THREE.Vector3(moveDir.z, 0, -moveDir.x).multiplyScalar(0.7)).normalize();
-      } else if (colRight.hit && !colLeft.hit) {
-        moveDir.add(new THREE.Vector3(-moveDir.z, 0, moveDir.x).multiplyScalar(0.7)).normalize();
+      if (colL.hit && !colR.hit) {
+        moveDir.add(new THREE.Vector3(moveDir.z, 0, -moveDir.x).multiplyScalar(0.75)).normalize();
+      } else if (colR.hit && !colL.hit) {
+        moveDir.add(new THREE.Vector3(-moveDir.z, 0, moveDir.x).multiplyScalar(0.75)).normalize();
       }
 
-      // 7. Enemy Separation (Avoid overlapping)
+      // Separation from other zombies
       const separation = new THREE.Vector3();
       for (const other of otherEnemies) {
         if (other === this || other.isDead) continue;
@@ -316,58 +356,59 @@ export class Enemy {
           separation.add(diff.normalize().multiplyScalar((minDistance - dist) / minDistance));
         }
       }
-      moveDir.add(separation.multiplyScalar(0.8)).normalize();
+      moveDir.add(separation.multiplyScalar(0.85)).normalize();
 
-      // Apply movement speed
-      const effectiveSpeed = this.speed;
+      // Detection modifier if player is crouching
+      const effectiveSpeed = isPlayerCrouched && distanceToPlayer > 18 ? this.speed * 0.7 : this.speed;
+
       this.group.position.x += moveDir.x * effectiveSpeed * delta;
       this.group.position.z += moveDir.z * effectiveSpeed * delta;
 
-      // Face movement direction
       const targetAngle = Math.atan2(moveDir.x, moveDir.z);
       this.group.rotation.y = targetAngle;
 
-      // Walk limb swing animation
-      this.walkCycleTimer += delta * (this.speed * 2.2);
+      // Limb swing animation
+      this.walkCycleTimer += delta * (this.speed * 2.3);
       const swing = Math.sin(this.walkCycleTimer) * 0.65;
-      this.leftLeg.rotation.x = swing;
-      this.rightLeg.rotation.x = -swing;
+      this.leftLegGroup.rotation.x = swing;
+      this.rightLegGroup.rotation.x = -swing;
 
-      // Arm swing / reaching towards player
-      if (this.attackTimer > this.attackCooldown - 0.4) {
-        // Attack swipe pose
-        this.leftArm.rotation.x = -Math.PI / 1.8;
-        this.rightArm.rotation.x = -Math.PI / 1.8;
+      // Arm reaching / running posture
+      if (this.type === EnemyType.FAST) {
+        // Runner: hunched aggressive sprint
+        this.torsoMesh.rotation.x = 0.28;
+        this.leftArmGroup.rotation.x = -1.1 + swing * 0.5;
+        this.rightArmGroup.rotation.x = -1.1 - swing * 0.5;
       } else {
-        this.leftArm.rotation.x = -0.6 + swing * 0.4;
-        this.rightArm.rotation.x = -0.6 - swing * 0.4;
+        this.torsoMesh.rotation.x = 0.1;
+        this.leftArmGroup.rotation.x = -0.65 + swing * 0.4;
+        this.rightArmGroup.rotation.x = -0.65 - swing * 0.4;
       }
     } else {
       // In range: Face player directly
-      const targetAngle = Math.atan2(toPlayer.x, toPlayer.z);
-      this.group.rotation.y = targetAngle;
+      this.group.rotation.y = Math.atan2(toPlayer.x, toPlayer.z);
 
-      // Attack swing pose
+      // Attack claw swipe pose
       if (this.attackTimer > this.attackCooldown - 0.4) {
-        const attackProgress = (this.attackCooldown - this.attackTimer) / 0.4;
-        const swipe = Math.sin(attackProgress * Math.PI) * 1.6;
-        this.leftArm.rotation.x = -Math.PI / 3 - swipe;
-        this.rightArm.rotation.x = -Math.PI / 3 - swipe;
+        const p = (this.attackCooldown - this.attackTimer) / 0.4;
+        const swipe = Math.sin(p * Math.PI) * 1.7;
+        this.leftArmGroup.rotation.x = -Math.PI / 3 - swipe;
+        this.rightArmGroup.rotation.x = -Math.PI / 3 - swipe;
       } else {
-        this.leftArm.rotation.x = -0.7;
-        this.rightArm.rotation.x = -0.7;
+        this.leftArmGroup.rotation.x = -0.7;
+        this.rightArmGroup.rotation.x = -0.7;
       }
-      this.leftLeg.rotation.x = 0;
-      this.rightLeg.rotation.x = 0;
+      this.leftLegGroup.rotation.x = 0;
+      this.rightLegGroup.rotation.x = 0;
     }
 
-    // 8. Apply Knockback
+    // Apply Knockback
     if (this.knockback.lengthSq() > 0.01) {
       this.group.position.addScaledVector(this.knockback, delta);
       this.knockback.lerp(new THREE.Vector3(0, 0, 0), 10 * delta);
     }
 
-    // 9. Wall & Obstacle Collision (Ensure enemies do not move through walls!)
+    // Wall Collision Check
     const col = this.environment.checkSphereCollision(
       new THREE.Vector3(this.group.position.x, 1.0, this.group.position.z),
       this.radius
@@ -377,7 +418,6 @@ export class Enemy {
       this.group.position.z += col.pushVector.z;
     }
 
-    // Map bounds clamp
     this.group.position.x = Math.max(-57, Math.min(57, this.group.position.x));
     this.group.position.z = Math.max(-57, Math.min(57, this.group.position.z));
     this.group.position.y = 0;

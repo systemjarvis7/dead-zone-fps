@@ -9,6 +9,7 @@ import { Player } from './entities/Player';
 import { EnemyManager } from './managers/EnemyManager';
 import { GameManager } from './managers/GameManager';
 import { UIManager } from './ui/UIManager';
+import { TimeOfDay, GraphicsQuality } from './core/Types';
 
 class GameApp {
   private renderer: THREE.WebGLRenderer;
@@ -34,7 +35,7 @@ class GameApp {
 
     // 1. Scene & Renderer setup
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 220);
     this.clock = new THREE.Clock();
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -53,7 +54,7 @@ class GameApp {
 
     this.input = new InputManager(this.renderer.domElement);
     this.particles = new ParticleSystem(this.scene);
-    this.environment = new VillageEnvironment(this.scene);
+    this.environment = new VillageEnvironment(this.scene, this.audio, settings.timeOfDay || TimeOfDay.DUSK);
     this.weapon = new Weapon(this.camera, this.audio, this.particles);
     this.player = new Player(this.camera, this.input, this.audio, this.environment, this.weapon);
     this.enemyManager = new EnemyManager(this.scene, this.audio, this.environment);
@@ -75,13 +76,13 @@ class GameApp {
 
   private setupInteractions(): void {
     // Weapon hit callback -> hitmarker in UI
-    this.weapon.onHitEnemy = (dmg, isHeadshot) => {
+    this.weapon.onHitEnemy = (_dmg, isHeadshot) => {
       this.uiManager.triggerHitmarker(isHeadshot);
     };
 
-    // Player damage callback -> screen damage vignette
-    this.player.onTakeDamage = () => {
-      this.uiManager.triggerDamageVignette();
+    // Player damage callback -> screen damage vignette with directional arc
+    this.player.onTakeDamage = (_curr, _max, attackerPos) => {
+      this.uiManager.triggerDamageVignette(attackerPos);
     };
 
     // Game Manager notifications -> toast
@@ -97,6 +98,24 @@ class GameApp {
     // Game Over -> UI dialog
     this.gameManager.onGameOver = (reason, stats) => {
       this.uiManager.showGameOver(reason, stats);
+    };
+
+    // Time of Day and Graphics Quality changes from Settings
+    this.uiManager.onTimeOfDayChanged = (time) => {
+      this.environment.setTimeOfDay(time);
+    };
+
+    this.uiManager.onGraphicsQualityChanged = (quality) => {
+      if (quality === GraphicsQuality.LOW) {
+        this.renderer.setPixelRatio(1.0);
+        this.renderer.shadowMap.enabled = false;
+      } else if (quality === GraphicsQuality.MEDIUM) {
+        this.renderer.setPixelRatio(1.0);
+        this.renderer.shadowMap.enabled = true;
+      } else {
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.shadowMap.enabled = true;
+      }
     };
 
     // UI requests start level
@@ -154,23 +173,32 @@ class GameApp {
     const delta = Math.min(this.clock.getDelta(), 0.1);
     const elapsedTime = this.clock.getElapsedTime();
 
-    // Update environmental lights (flickering lanterns/fire)
     this.environment.update(elapsedTime);
 
     if (this.isInGame) {
       this.weapon.viewmodelGroup.visible = true;
 
-      // Check shooting input (only when pointer locked and not paused)
-      if (this.input.isLocked() && !this.gameManager.state.isPaused && !this.gameManager.state.isGameOver && !this.gameManager.state.isLevelCompleted) {
+      const shootables = this.environment.shootableMeshes;
+      const enemyTargets = this.enemyManager.getShootableEnemyObjects();
+
+      // Combat Input Checks (Shooting & Melee Strike)
+      if (
+        this.input.isLocked() &&
+        !this.gameManager.state.isPaused &&
+        !this.gameManager.state.isGameOver &&
+        !this.gameManager.state.isLevelCompleted
+      ) {
         if (this.input.shootJustPressed) {
-          const shootables = this.environment.shootableMeshes;
-          const enemyTargets = this.enemyManager.getShootableEnemyObjects();
           this.weapon.shoot(shootables, enemyTargets);
+        }
+        if (this.input.meleePressed) {
+          this.weapon.performMelee(enemyTargets);
         }
       }
 
       // Update Player, Camera, Weapon
       this.player.update(delta);
+      this.weapon.update(delta, this.input.isAiming, this.input.deltaX, this.input.deltaY, enemyTargets);
 
       // Update Particles
       this.particles.update(delta);
@@ -178,10 +206,10 @@ class GameApp {
       // Update Game Manager (Spawning, Objectives, Wave Progress)
       this.gameManager.update(delta);
 
-      // Update UI HUD
-      this.uiManager.update(delta);
+      // Update UI HUD & Radar
+      this.uiManager.update(delta, this.enemyManager.enemies);
 
-      // Reset one-shot frame input deltas
+      // Reset one-shot input deltas
       this.input.resetFrameDeltas();
     } else {
       // Main Menu: Cinematic orbiting camera
@@ -198,7 +226,6 @@ class GameApp {
   };
 }
 
-// Start game when DOM is loaded
 window.addEventListener('DOMContentLoaded', () => {
   new GameApp();
 });

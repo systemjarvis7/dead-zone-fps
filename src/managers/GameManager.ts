@@ -66,36 +66,30 @@ export class GameManager {
   }
 
   private setupEvents(): void {
-    // Player takes damage
     this.player.onTakeDamage = () => {
       this.notifyState();
     };
 
-    // Player dies
     this.player.onDeath = () => {
       this.handleGameOver();
     };
 
-    // Enemy attacks player
-    this.enemyManager.onEnemyAttackPlayer = (damage) => {
+    this.enemyManager.onEnemyAttackPlayer = (damage, attackerPos) => {
       if (!this.state.isGameOver && !this.state.isLevelCompleted && !this.state.isPaused) {
-        this.player.takeDamage(damage);
+        this.player.takeDamage(damage, attackerPos);
       }
     };
 
-    // Enemy killed
     this.enemyManager.onEnemyKilled = (enemyType) => {
       this.handleEnemyKilled(enemyType);
     };
 
-    // Pickup collected
     this.enemyManager.onPickupCollected = (pickupType) => {
       this.handlePickup(pickupType);
     };
   }
 
   public applyPlayerLevelBonuses(): void {
-    // Level 1 = 100 HP, Level 2 = 110 HP, etc.
     const maxHP = 100 + (this.stats.level - 1) * 10;
     this.player.setMaxHealth(maxHP);
   }
@@ -120,12 +114,10 @@ export class GameManager {
     this.enemyManager.allowBoss = config.spawnBoss;
     this.enemyManager.spawnInterval = 2.0;
 
-    // Reset player position & health
     this.player.reset(new THREE.Vector3(0, 1.7, 0));
     this.applyPlayerLevelBonuses();
     this.player.health = this.player.maxHealth;
 
-    // Pre-spawn initial enemies
     for (let i = 0; i < Math.min(3, config.maxActiveEnemies); i++) {
       this.enemyManager.spawnEnemy(EnemyType.NORMAL, this.player.position);
     }
@@ -148,7 +140,6 @@ export class GameManager {
 
     this.enemyManager.reset();
 
-    // Reset player
     this.player.reset(new THREE.Vector3(0, 1.7, 0));
     this.applyPlayerLevelBonuses();
     this.player.health = this.player.maxHealth;
@@ -158,7 +149,6 @@ export class GameManager {
 
   private setupSurvivalWave(wave: number): void {
     this.state.currentWave = wave;
-    // Wave 1 = 3 zombies, Wave 2 = 6, Wave 3 = 9, Wave 4 = 12, etc.
     this.state.waveTotalEnemies = 3 + (wave - 1) * 3;
     this.state.waveEnemiesSpawned = 0;
     this.state.waveEnemiesKilled = 0;
@@ -169,7 +159,6 @@ export class GameManager {
     this.enemyManager.bossSpawned = false;
     this.enemyManager.spawnInterval = Math.max(1.2, 2.4 - wave * 0.1);
 
-    // Initial enemies
     const initialCount = Math.min(3, this.enemyManager.maxActiveEnemies);
     for (let i = 0; i < initialCount; i++) {
       let type = EnemyType.NORMAL;
@@ -180,7 +169,6 @@ export class GameManager {
       this.state.waveEnemiesSpawned++;
     }
 
-    // Boss check for wave 5, 10, etc.
     if (this.enemyManager.allowBoss) {
       this.enemyManager.spawnBoss(this.player.position);
       this.state.waveEnemiesSpawned++;
@@ -203,7 +191,6 @@ export class GameManager {
     this.state.sessionKills++;
     this.stats = SaveManager.recordKill(this.stats);
 
-    // Calculate XP and Coin reward
     let xpGain = 20;
     let coinGain = 5;
 
@@ -216,26 +203,23 @@ export class GameManager {
       this.state.bossDefeated = true;
     }
 
-    // RPG XP and Level Up check
     const xpResult = SaveManager.addXP(this.stats, xpGain);
     this.stats = xpResult.newStats;
     this.stats = SaveManager.addCoins(this.stats, coinGain);
 
     if (xpResult.leveledUp) {
       this.applyPlayerLevelBonuses();
-      this.player.heal(999); // Full health on level up!
+      this.player.heal(999);
       this.audio.playLevelWin();
       if (this.onNotification) {
         this.onNotification(`LEVEL UP! YOU ARE NOW LEVEL ${this.stats.level}! (+10 MAX HP)`, 'success');
       }
     }
 
-    // Handle game mode objectives
     if (this.state.mode === GameMode.LEVEL) {
       this.state.levelKills++;
       const currentConfig = LEVELS.find(l => l.levelNumber === this.state.levelNumber)!;
 
-      // Spawn Boss for level 5 when threshold is reached
       if (currentConfig.spawnBoss && !this.enemyManager.bossSpawned && this.state.levelKills >= (currentConfig.bossAtKills || 10)) {
         this.enemyManager.spawnBoss(this.player.position);
         if (this.onNotification) {
@@ -243,7 +227,6 @@ export class GameManager {
         }
       }
 
-      // Check level completion
       const killsMet = this.state.levelKills >= currentConfig.targetKills;
       const bossMet = !currentConfig.spawnBoss || this.state.bossDefeated;
 
@@ -251,13 +234,9 @@ export class GameManager {
         this.handleLevelCompleted(currentConfig);
       }
     } else {
-      // Survival Mode
       this.state.waveEnemiesKilled++;
-
-      // Check if wave is cleared
       const remainingEnemies = this.state.waveTotalEnemies - this.state.waveEnemiesKilled;
       if (remainingEnemies <= 0 && this.enemyManager.enemies.filter(e => !e.isDead).length === 0) {
-        // Wave complete! Give wave bonus
         const waveBonusXP = 50 + this.state.currentWave * 20;
         const waveBonusCoins = 20 + this.state.currentWave * 5;
         this.stats = SaveManager.addXP(this.stats, waveBonusXP).newStats;
@@ -269,7 +248,6 @@ export class GameManager {
           this.onNotification(`WAVE ${this.state.currentWave} CLEARED! (+${waveBonusXP} XP, +${waveBonusCoins} Coins)`, 'success');
         }
 
-        // Brief delay before next wave
         setTimeout(() => {
           if (!this.state.isGameOver && this.state.mode === GameMode.SURVIVAL) {
             this.setupSurvivalWave(this.state.currentWave + 1);
@@ -283,16 +261,26 @@ export class GameManager {
 
   private handlePickup(type: PickupType): void {
     if (type === PickupType.HEALTH) {
-      const healed = this.player.heal(30);
+      this.player.heal(30);
       if (this.onNotification) {
-        this.onNotification(`+30 HEALTH (${this.player.health}/${this.player.maxHealth})`, 'loot');
+        this.onNotification(`+30 HEALTH (${Math.ceil(this.player.health)}/${this.player.maxHealth})`, 'loot');
       }
     } else if (type === PickupType.AMMO) {
       this.player.weapon.addAmmo(24);
       if (this.onNotification) {
         this.onNotification(`+24 PISTOL AMMO`, 'loot');
       }
-    } else { // COIN
+    } else if (type === PickupType.GRENADE) {
+      this.player.weapon.addGrenades(2);
+      if (this.onNotification) {
+        this.onNotification(`+2 GRENADES`, 'loot');
+      }
+    } else if (type === PickupType.ARMOR) {
+      this.player.addArmor(40);
+      if (this.onNotification) {
+        this.onNotification(`+40 BODY ARMOR`, 'loot');
+      }
+    } else {
       this.stats = SaveManager.addCoins(this.stats, 10);
       if (this.onNotification) {
         this.onNotification(`+10 COINS`, 'loot');
@@ -305,18 +293,13 @@ export class GameManager {
     if (this.state.isLevelCompleted) return;
     this.state.isLevelCompleted = true;
 
-    // Stop spawning
     this.enemyManager.maxActiveEnemies = 0;
-
-    // Victory sound
     this.audio.playLevelWin();
 
-    // Award mission rewards
     const xpResult = SaveManager.addXP(this.stats, config.rewardXP);
     this.stats = xpResult.newStats;
     this.stats = SaveManager.addCoins(this.stats, config.rewardCoins);
 
-    // Unlock next level
     if (config.levelNumber < 5) {
       this.stats = SaveManager.unlockLevel(this.stats, config.levelNumber + 1);
     }
@@ -372,7 +355,6 @@ export class GameManager {
 
     this.state.survivalTime += delta;
 
-    // Survival mode: continuous spawning until wave quota met
     let canSpawn = false;
     if (this.state.mode === GameMode.LEVEL) {
       const config = LEVELS.find(l => l.levelNumber === this.state.levelNumber)!;
@@ -381,12 +363,7 @@ export class GameManager {
       canSpawn = this.state.waveEnemiesSpawned < this.state.waveTotalEnemies;
     }
 
-    this.enemyManager.update(delta, this.player.position, canSpawn);
-
-    // If survival enemy spawned, count it
-    if (this.state.mode === GameMode.SURVIVAL && canSpawn) {
-      // counted via spawner callback
-    }
+    this.enemyManager.update(delta, this.player.position, canSpawn, this.player.isCrouching);
   }
 
   private notifyState(): void {

@@ -21,12 +21,11 @@ export class EnemyManager {
   public allowBoss: boolean = false;
   public bossSpawned: boolean = false;
 
-  // Survival pickup drop timer
   private pickupTimer: number = 0;
 
   // Callbacks
   public onEnemyKilled?: (enemyType: EnemyType) => void;
-  public onEnemyAttackPlayer?: (damage: number) => void;
+  public onEnemyAttackPlayer?: (damage: number, attackerPos: THREE.Vector3) => void;
   public onPickupCollected?: (type: PickupType) => void;
 
   constructor(scene: THREE.Scene, audio: AudioManager, environment: VillageEnvironment) {
@@ -36,13 +35,11 @@ export class EnemyManager {
   }
 
   public reset(): void {
-    // Clean up existing enemies
     for (const enemy of this.enemies) {
       this.scene.remove(enemy.group);
     }
     this.enemies = [];
 
-    // Clean up pickups
     for (const pickup of this.pickups) {
       pickup.destroy(this.scene);
     }
@@ -54,16 +51,13 @@ export class EnemyManager {
   }
 
   public spawnEnemy(type: EnemyType, playerPos: THREE.Vector3): Enemy {
-    // Choose spawn point that is sufficiently far from player (at least 20m)
     let bestPoint = this.environment.spawnPoints[0];
     let maxDist = 0;
 
-    // Pick a random distant spawn point
     const candidates = this.environment.spawnPoints.filter(pt => pt.distanceTo(playerPos) > 18);
     if (candidates.length > 0) {
       bestPoint = candidates[Math.floor(Math.random() * candidates.length)];
     } else {
-      // Pick furthest
       for (const pt of this.environment.spawnPoints) {
         const d = pt.distanceTo(playerPos);
         if (d > maxDist) {
@@ -73,7 +67,6 @@ export class EnemyManager {
       }
     }
 
-    // Add slight random jitter
     const spawnPos = bestPoint.clone().add(new THREE.Vector3(
       (Math.random() - 0.5) * 4,
       0,
@@ -82,9 +75,9 @@ export class EnemyManager {
 
     const enemy = new Enemy(type, spawnPos, this.audio, this.environment);
 
-    enemy.onAttackPlayer = (dmg) => {
+    enemy.onAttackPlayer = (dmg, attackerPos) => {
       if (this.onEnemyAttackPlayer) {
-        this.onEnemyAttackPlayer(dmg);
+        this.onEnemyAttackPlayer(dmg, attackerPos);
       }
     };
 
@@ -93,7 +86,7 @@ export class EnemyManager {
         this.onEnemyKilled(killedEnemy.type);
       }
 
-      // 35% chance to drop a pickup on death
+      // 38% chance to drop loot
       if (Math.random() < 0.38) {
         this.spawnRandomPickup(killedEnemy.group.position.clone().add(new THREE.Vector3(0, 0.4, 0)));
       }
@@ -114,10 +107,12 @@ export class EnemyManager {
   public spawnRandomPickup(pos: THREE.Vector3): Pickup {
     const rand = Math.random();
     let type = PickupType.COIN;
-    if (rand < 0.35) {
+    if (rand < 0.32) {
       type = PickupType.HEALTH;
-    } else if (rand < 0.70) {
+    } else if (rand < 0.65) {
       type = PickupType.AMMO;
+    } else {
+      type = PickupType.COIN;
     }
 
     const pickup = new Pickup(type, pos, this.scene);
@@ -146,8 +141,7 @@ export class EnemyManager {
     return list;
   }
 
-  public update(delta: number, playerPos: THREE.Vector3, isSpawningEnabled: boolean): void {
-    // 1. Spawner logic
+  public update(delta: number, playerPos: THREE.Vector3, isSpawningEnabled: boolean, isPlayerCrouched: boolean = false): void {
     if (isSpawningEnabled && this.enemies.filter(e => !e.isDead).length < this.maxActiveEnemies) {
       this.spawnTimer += delta;
       if (this.spawnTimer >= this.spawnInterval) {
@@ -162,7 +156,6 @@ export class EnemyManager {
       }
     }
 
-    // 2. Periodic Survival Pickup Spawning
     this.pickupTimer += delta;
     if (this.pickupTimer >= 22) {
       this.pickupTimer = 0;
@@ -171,10 +164,9 @@ export class EnemyManager {
       }
     }
 
-    // 3. Update Enemies
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const enemy = this.enemies[i];
-      enemy.update(delta, playerPos, this.enemies);
+      enemy.update(delta, playerPos, this.enemies, isPlayerCrouched);
 
       if (enemy.shouldRemove) {
         this.scene.remove(enemy.group);
@@ -182,7 +174,6 @@ export class EnemyManager {
       }
     }
 
-    // 4. Update Pickups & Check Player Collection
     for (let i = this.pickups.length - 1; i >= 0; i--) {
       const pickup = this.pickups[i];
       pickup.update(delta);

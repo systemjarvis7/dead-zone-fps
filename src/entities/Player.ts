@@ -16,35 +16,55 @@ export class Player {
   public velocity: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
   public isGrounded: boolean = true;
   public readonly playerRadius: number = 0.55;
-  public readonly eyeHeight: number = 1.7;
+
+  // Eye Heights
+  public readonly standingEyeHeight: number = 1.7;
+  public readonly crouchingEyeHeight: number = 1.05;
+  public currentEyeHeight: number = 1.7;
+  public isCrouching: boolean = false;
+
+  // Stamina
+  public stamina: number = 100;
+  public readonly maxStamina: number = 100;
 
   // Speeds
   public walkSpeed: number = 5.2;
   public sprintSpeed: number = 8.5;
+  public crouchSpeed: number = 2.6;
   public jumpForce: number = 8.2;
   public gravity: number = 22.0;
 
   // Camera angles
-  public pitch: number = 0; // vertical look
-  public yaw: number = 0;   // horizontal look
+  public pitch: number = 0;
+  public yaw: number = 0;
+  private cameraRoll: number = 0;
 
-  // Health
+  // Health & Armor
   public health: number = 100;
   public maxHealth: number = 100;
+  public armor: number = 0;
   public isDead: boolean = false;
   private invulnerabilityTimer: number = 0;
 
-  // Head bobbing & FOV
+  // Flashlight
+  public flashlight!: THREE.SpotLight;
+  public flashlightTarget!: THREE.Object3D;
+  public isFlashlightOn: boolean = false;
+
+  // Head bobbing & Camera kinetics
   private bobTimer: number = 0;
+  private footstepTimer: number = 0;
+  private landingDip: number = 0;
   private baseFOV: number = 75;
   private adsFOV: number = 58;
 
-  // Screen shake
+  // Screen shake trauma
   public trauma: number = 0;
 
   // Callbacks
-  public onTakeDamage?: (currentHealth: number, maxHealth: number) => void;
+  public onTakeDamage?: (currentHealth: number, maxHealth: number, attackerPos?: THREE.Vector3) => void;
   public onDeath?: () => void;
+  public onInteractionPrompt?: (prompt: string) => void;
 
   constructor(
     camera: THREE.PerspectiveCamera,
@@ -62,6 +82,29 @@ export class Player {
     this.baseFOV = camera.fov;
     this.camera.position.copy(this.position);
     this.camera.rotation.order = 'YXZ';
+
+    this.setupFlashlight();
+  }
+
+  private setupFlashlight(): void {
+    this.flashlightTarget = new THREE.Object3D();
+    this.flashlightTarget.position.set(0, 0, -5);
+    this.camera.add(this.flashlightTarget);
+
+    this.flashlight = new THREE.SpotLight(0xfffaed, 0, 38, Math.PI / 6, 0.45, 1.2);
+    this.flashlight.position.set(0.2, -0.15, 0.1);
+    this.flashlight.target = this.flashlightTarget;
+    this.flashlight.castShadow = true;
+    this.flashlight.shadow.mapSize.width = 1024;
+    this.flashlight.shadow.mapSize.height = 1024;
+    this.flashlight.shadow.bias = -0.0002;
+    this.camera.add(this.flashlight);
+  }
+
+  public toggleFlashlight(): void {
+    this.isFlashlightOn = !this.isFlashlightOn;
+    this.flashlight.intensity = this.isFlashlightOn ? 2.8 : 0;
+    this.audio.playFlashlightToggle();
   }
 
   public setBaseFOV(fov: number): void {
@@ -81,17 +124,28 @@ export class Player {
     return this.health - old;
   }
 
-  public takeDamage(amount: number): void {
+  public addArmor(amount: number): void {
+    this.armor = Math.min(100, this.armor + amount);
+  }
+
+  public takeDamage(amount: number, attackerPos?: THREE.Vector3): void {
     if (this.isDead || this.invulnerabilityTimer > 0) return;
 
+    // Armor absorption (absorbs 50% damage)
+    if (this.armor > 0) {
+      const absorbed = Math.min(this.armor, amount * 0.5);
+      this.armor -= absorbed;
+      amount -= absorbed;
+    }
+
     this.health -= amount;
-    this.invulnerabilityTimer = 0.25; // brief iframe
-    this.trauma = Math.min(1.0, this.trauma + 0.5);
+    this.invulnerabilityTimer = 0.25;
+    this.trauma = Math.min(1.0, this.trauma + 0.55);
 
     this.audio.playPlayerHurt();
 
     if (this.onTakeDamage) {
-      this.onTakeDamage(this.health, this.maxHealth);
+      this.onTakeDamage(this.health, this.maxHealth, attackerPos);
     }
 
     if (this.health <= 0) {
@@ -109,9 +163,14 @@ export class Player {
     this.pitch = 0;
     this.yaw = 0;
     this.health = this.maxHealth;
+    this.armor = 0;
+    this.stamina = 100;
     this.isDead = false;
+    this.isCrouching = false;
+    this.currentEyeHeight = this.standingEyeHeight;
     this.invulnerabilityTimer = 0;
     this.trauma = 0;
+    this.landingDip = 0;
     this.weapon.reset();
   }
 
@@ -125,11 +184,15 @@ export class Player {
     // 1. Mouse Look (Yaw & Pitch)
     this.yaw -= this.input.deltaX;
     this.pitch -= this.input.deltaY;
-    // Clamp pitch between -85 and +85 degrees
     const maxPitch = (Math.PI / 2) * 0.94;
     this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
 
-    // 2. Movement Direction relative to camera yaw
+    // 2. Crouch State & Smooth Eye Height Lerp
+    this.isCrouching = this.input.crouch;
+    const targetHeight = this.isCrouching ? this.crouchingEyeHeight : this.standingEyeHeight;
+    this.currentEyeHeight = THREE.MathUtils.lerp(this.currentEyeHeight, targetHeight, 12 * delta);
+
+    // 3. Movement Direction
     const forwardVec = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const rightVec = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
 
@@ -144,42 +207,66 @@ export class Player {
       moveDir.normalize();
     }
 
-    // 3. Sprinting & Speed
-    // Cannot sprint while aiming or moving backward
-    const canSprint = this.input.sprint && !this.input.isAiming && this.input.forward;
-    const targetSpeed = canSprint ? this.sprintSpeed : this.walkSpeed;
+    // 4. Sprint & Stamina Mechanics
+    const wantsToSprint = this.input.sprint && !this.input.isAiming && this.input.forward && !this.isCrouching;
+    let isSprinting = false;
 
-    // Smooth horizontal acceleration
+    if (wantsToSprint && this.stamina > 5) {
+      isSprinting = true;
+      this.stamina = Math.max(0, this.stamina - delta * 25);
+    } else {
+      // Regenerate stamina
+      this.stamina = Math.min(this.maxStamina, this.stamina + delta * 20);
+    }
+
+    // Speed calculation
+    let targetSpeed = this.walkSpeed;
+    if (this.isCrouching) {
+      targetSpeed = this.crouchSpeed;
+    } else if (isSprinting) {
+      targetSpeed = this.sprintSpeed;
+    }
+
     const targetVelocityX = isMoving ? moveDir.x * targetSpeed : 0;
     const targetVelocityZ = isMoving ? moveDir.z * targetSpeed : 0;
-
     const accel = this.isGrounded ? 15 : 4;
     this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, targetVelocityX, accel * delta);
     this.velocity.z = THREE.MathUtils.lerp(this.velocity.z, targetVelocityZ, accel * delta);
 
-    // 4. Jumping & Gravity
-    if (this.isGrounded && this.input.jumpPressed) {
+    // 5. Jump & Gravity
+    if (this.isGrounded && this.input.jumpPressed && !this.isCrouching) {
       this.velocity.y = this.jumpForce;
       this.isGrounded = false;
+      this.audio.playJump();
     }
 
+    const wasInAir = !this.isGrounded;
     if (!this.isGrounded) {
       this.velocity.y -= this.gravity * delta;
     }
 
-    // 5. Update Position
+    // 6. Update Position
     this.position.x += this.velocity.x * delta;
     this.position.z += this.velocity.z * delta;
     this.position.y += this.velocity.y * delta;
 
-    // Ground check
-    if (this.position.y <= this.eyeHeight) {
-      this.position.y = this.eyeHeight;
+    // Ground check & Landing Dip
+    if (this.position.y <= this.currentEyeHeight) {
+      this.position.y = this.currentEyeHeight;
       this.velocity.y = 0;
       this.isGrounded = true;
+
+      if (wasInAir) {
+        this.landingDip = 0.12; // Camera dips on landing
+        this.audio.playLanding();
+      }
     }
 
-    // 6. Wall & Obstacle Collision Check
+    if (this.landingDip > 0) {
+      this.landingDip = Math.max(0, this.landingDip - delta * 0.8);
+    }
+
+    // 7. Wall Collision Check
     const colResult = this.environment.checkSphereCollision(
       new THREE.Vector3(this.position.x, 1.0, this.position.z),
       this.playerRadius
@@ -189,55 +276,112 @@ export class Player {
       this.position.z += colResult.pushVector.z;
     }
 
-    // Map Boundaries Clamp (-58 to 58)
+    // Map Boundaries Clamp
     this.position.x = Math.max(-57, Math.min(57, this.position.x));
     this.position.z = Math.max(-57, Math.min(57, this.position.z));
 
-    // 7. Head Bobbing
-    let bobOffset = 0;
+    // 8. Footstep Audio Timing
+    if (this.isGrounded && isMoving) {
+      this.footstepTimer += delta;
+      const stepInterval = isSprinting ? 0.3 : 0.48;
+      if (this.footstepTimer >= stepInterval) {
+        this.footstepTimer = 0;
+        this.audio.playFootstep(isSprinting);
+      }
+    } else {
+      this.footstepTimer = 0;
+    }
+
+    // 9. Camera Bobbing & Kinetic Roll
+    let bobVertical = 0;
+    let bobHorizontal = 0;
     if (this.isGrounded && isMoving && !this.input.isAiming) {
-      const bobFreq = canSprint ? 14 : 9;
+      const bobFreq = isSprinting ? 14 : 9;
       this.bobTimer += delta * bobFreq;
-      bobOffset = Math.sin(this.bobTimer) * (canSprint ? 0.055 : 0.03);
+      bobVertical = Math.sin(this.bobTimer) * (isSprinting ? 0.055 : 0.03);
+      bobHorizontal = Math.cos(this.bobTimer * 0.5) * (isSprinting ? 0.035 : 0.018);
     } else {
       this.bobTimer = 0;
     }
 
-    // 8. Screen Trauma (Decay)
-    let shakePitch = 0;
-    let shakeYaw = 0;
-    let shakeRoll = 0;
+    // Strafe roll (camera leans slightly when strafing left/right)
+    let targetRoll = 0;
+    if (this.input.left) targetRoll = 0.025;
+    if (this.input.right) targetRoll = -0.025;
+    this.cameraRoll = THREE.MathUtils.lerp(this.cameraRoll, targetRoll, 10 * delta);
+
+    // 10. Screen Trauma Shake
+    let shakePitch = 0, shakeYaw = 0, shakeRoll = 0;
     if (this.trauma > 0) {
-      const shakeAmt = this.trauma * this.trauma;
-      const shakeFreq = performance.now() * 0.03;
-      shakePitch = Math.sin(shakeFreq) * 0.035 * shakeAmt;
-      shakeYaw = Math.cos(shakeFreq * 1.3) * 0.035 * shakeAmt;
-      shakeRoll = Math.sin(shakeFreq * 0.8) * 0.02 * shakeAmt;
+      const amt = this.trauma * this.trauma;
+      const freq = performance.now() * 0.03;
+      shakePitch = Math.sin(freq) * 0.04 * amt;
+      shakeYaw = Math.cos(freq * 1.3) * 0.04 * amt;
+      shakeRoll = Math.sin(freq * 0.8) * 0.025 * amt;
       this.trauma = Math.max(0, this.trauma - delta * 1.5);
     }
 
-    // 9. Apply Camera Transform
-    this.camera.position.set(this.position.x, this.position.y + bobOffset, this.position.z);
+    // 11. Apply Camera Transform
+    this.camera.position.set(
+      this.position.x + bobHorizontal,
+      this.position.y - this.landingDip + bobVertical,
+      this.position.z
+    );
     this.camera.rotation.set(
       this.pitch + shakePitch,
       this.yaw + shakeYaw,
-      shakeRoll,
+      this.cameraRoll + shakeRoll,
       'YXZ'
     );
 
-    // 10. Dynamic FOV (Aim Down Sights Zoom)
+    // 12. Dynamic ADS FOV
     const targetFOV = this.input.isAiming ? this.adsFOV : this.baseFOV;
     if (Math.abs(this.camera.fov - targetFOV) > 0.1) {
       this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFOV, 14 * delta);
       this.camera.updateProjectionMatrix();
     }
 
-    // 11. Handle Reload Input
+    // 13. Action Inputs
+    if (this.input.flashlightPressed) {
+      this.toggleFlashlight();
+    }
     if (this.input.reloadPressed) {
       this.weapon.reload();
     }
+    if (this.input.weapon1Pressed) {
+      this.weapon.setWeapon(1);
+    }
+    if (this.input.weapon2Pressed) {
+      this.weapon.setWeapon(2);
+    }
+    if (this.input.grenadePressed) {
+      this.weapon.throwGrenade();
+    }
 
-    // 12. Weapon Viewmodel Update
-    this.weapon.update(delta, this.input.isAiming, this.input.deltaX, this.input.deltaY);
+    // 14. World Interaction Prompt Check (Door / Crate / Generator)
+    const interaction = this.environment.checkInteractionTarget(this.position);
+    if (this.onInteractionPrompt) {
+      this.onInteractionPrompt(interaction.prompt);
+    }
+
+    if (this.input.interactPressed && interaction.targetType) {
+      const res = this.environment.interactWith({
+        targetType: interaction.targetType,
+        targetObj: interaction.targetObj
+      });
+
+      if (res.loot) {
+        if (res.loot === 'ammo') {
+          this.weapon.addAmmo(24);
+          this.audio.playPickup(2 as any);
+        } else if (res.loot === 'health') {
+          this.heal(40);
+          this.audio.playPickup(1 as any);
+        } else if (res.loot === 'grenade') {
+          this.weapon.addGrenades(2);
+          this.audio.playPickup(4 as any);
+        }
+      }
+    }
   }
 }

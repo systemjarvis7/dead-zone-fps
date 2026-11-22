@@ -12,7 +12,21 @@ export enum EnemyType {
 export enum PickupType {
   HEALTH = 'HEALTH',
   AMMO = 'AMMO',
-  COIN = 'COIN'
+  COIN = 'COIN',
+  GRENADE = 'GRENADE',
+  ARMOR = 'ARMOR'
+}
+
+export enum TimeOfDay {
+  DAY = 'DAY',
+  DUSK = 'DUSK',
+  NIGHT = 'NIGHT'
+}
+
+export enum GraphicsQuality {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH'
 }
 
 export interface PlayerStats {
@@ -28,8 +42,11 @@ export interface GameSettings {
   mouseSensitivity: number;
   masterVolume: number;
   sfxVolume: number;
+  ambientVolume: number;
   fov: number;
   invertY: boolean;
+  timeOfDay: TimeOfDay;
+  graphicsQuality: GraphicsQuality;
 }
 
 export interface LevelConfig {

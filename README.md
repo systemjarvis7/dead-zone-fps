@@ -1,162 +1,93 @@
-# DEAD ZONE – 3D FPS Survival RPG
+# DEAD ZONE V2.0 – Realistic 3D FPS Zombie Survival RPG
 
-**DEAD ZONE** is a lightweight, fully playable 3D First-Person Shooter Survival RPG built with **Three.js**, **TypeScript**, **Vite**, and procedural Web Audio API synthesis.
-
----
-
-## ⚡ Quick Launch Instructions
-
-### Prerequisites
-- Node.js (v18+ recommended)
-- Modern web browser (Chrome, Edge, Firefox, Brave)
-
-### 1. Install Dependencies
-```bash
-npm install
-```
-
-### 2. Run Locally in Development Mode
-```bash
-npm run dev
-```
-Open **[http://localhost:3000/](http://localhost:3000/)** in your browser. Click anywhere on the screen to lock the mouse pointer and begin!
-
-### 3. Build for Production (Optional)
-```bash
-npm run build
-npm run preview
-```
+**DEAD ZONE V2.0** is an upgraded, high-immersion, lightweight 3D First-Person Zombie Survival Shooter built with **Three.js**, **TypeScript**, **Vite**, and procedural Web Audio API synthesis.
 
 ---
 
-## 🎮 Controls
+## ⚡ What's New in V2.0 (AAA-Style Upgrade)
+
+### 1. 🌆 Realistic 3D Village & PBR Environment
+- **Detailed Enterable Houses**: Ruined houses with detailed exterior facades, broken windows, doorway frames, and **walkable interiors** featuring tables, supply shelves, and interactive elements.
+- **Destroyed Military APC & Wrecks**: Heavy armored troop carrier with angled armor plating, tires, and turret ring, alongside burned sedans and damaged trucks.
+- **World Interactivity (`E`)**:
+  - **Interactive Doors**: Press `E` to smoothly swing wooden doors open or shut for tactical cover, accompanied by creaking hinge sound effects.
+  - **Supply Crates**: Military crates with yellow latches that open when searched, rewarding ammunition, medical supplies, or fragmentation grenades.
+  - **Depot Generator**: Activate the power generator in the depot to trigger high-intensity village floodlights.
+- **Dynamic Atmospheric Lighting**:
+  - **Atmosphere Modes**: Overcast Day, Eerie Dusk, and Pitch Dark Night (where the tactical flashlight becomes essential).
+  - PBR roughness/metalness materials, PCF soft shadows, and dense atmospheric fog (`THREE.FogExp2`).
+
+### 2. 🎮 Advanced First-Person Kinetics
+- **Human Viewpoint Camera**:
+  - Kinetic camera roll (subtle 1.5° camera tilt into the direction of strafe).
+  - Walking figure-8 head bobbing and aggressive sprint sway.
+  - Realistic jump air-lift and landing camera compression dip.
+- **Crouch System (`Ctrl` or `C`)**:
+  - Smooth camera height interpolation from 1.7m to 1.05m.
+  - Halves movement speed and cuts zombie detection range by 50% for stealth.
+- **Sprint & Stamina (`Shift`)**:
+  - Dedicated stamina bar on the HUD (100 Max). Drains while sprinting; regenerates when walking or resting.
+- **Tactical Flashlight (`F`)**:
+  - High-power real-time spotlight attached to the player camera, illuminating dark interiors and night village lanes.
+- **Melee Attack (`V`)**:
+  - High-speed knife slash dealing 45 damage in a 2.2m forward arc with blood splatters and meaty impact audio.
+- **Fragmentation Grenades (`G`)**:
+  - Parabolic physics projectile with bounce, 2.5-second fuse, high-yield detonation shockwave, particle debris, and up to 150 area-of-effect damage.
+- **Weapon Switching (`1` & `2`)**:
+  - Toggle between 9MM Tactical Pistol and Tactical Combat Knife.
+
+### 3. 🧟 Realistic 3D Zombie Characters & AI
+- **Human-Proportioned Models**: Detailed anatomy with jaw, glowing sunken eye sockets, torn clothing (bloody flannel, decayed worker jackets, denim), and claw hands.
+- **Enemy Classes**:
+  - **Normal Zombie**: Shambling patrol, spots player, pursues with whisker obstacle avoidance, and swipes when close.
+  - **Runner Zombie**: Hunched predator posture, aggressive sprint cycle, and rapid double claw frenzy.
+  - **The Abomination (Boss Titan)**: 1.75x scale behemoth with armored carapace, ground slam shockwaves, and heavy melee damage.
+- **Combat Reactions**:
+  - Flinches backward and flashes red on body hits.
+  - Violent head snap-back on critical headshots.
+  - Ragdoll-style collapse onto back with ground sinking upon death.
+  - Spatial 3D sound: growls and shrieks grow louder as enemies close in.
+
+### 4. 🎛️ Modern Tactical HUD & Radar
+- **Tactical Radar / Minimap (Top-Right)**:
+  - Real-time scanning radar showing player orientation needle, map borders, and glowing red blips for nearby infected within 36m.
+- **Vitality & Stamina Panel (Bottom-Left)**:
+  - Health bar with low-health pulse and red warning vignette.
+  - Stamina bar and Stance badge (`[STAND]`, `[CROUCH]`, `[SPRINT]`).
+- **Tactical Weapon Card (Bottom-Right)**:
+  - Active weapon name, ammo count (`12 / 48`), grenade inventory (`💣 x3`), flashlight status (`🔦 ON/OFF`), and reload progress bar.
+- **Combat Feedback**:
+  - Dynamic blooming crosshair, white body hitmarkers, gold headshot hitmarkers, directional damage arc indicator pointing toward attackers, and centered `[E]` interaction prompts.
+
+---
+
+## 🕹️ Controls Reference
 
 | Action | Key / Input |
 |---|---|
-| **Move** | `W`, `A`, `S`, `D` |
+| **Move / Strafe** | `W`, `A`, `S`, `D` |
 | **Look Around** | `Mouse` (Pointer Lock) |
 | **Fire Weapon** | `Left Mouse Button` |
 | **Aim Down Sights (ADS)** | `Right Mouse Button` (Hold) |
 | **Sprint** | `Shift` (Hold while moving forward) |
+| **Crouch (Stealth)** | `Ctrl` or `C` |
 | **Jump** | `Space` |
 | **Reload** | `R` |
+| **Interact (Doors / Crates / Switch)** | `E` |
+| **Flashlight Toggle** | `F` |
+| **Melee Knife Strike** | `V` |
+| **Throw Grenade** | `G` |
+| **Switch Weapons** | `1` & `2` |
 | **Pause / Resume** | `ESC` |
 
 ---
 
-## 🔫 Weapons & Combat Mechanics
+## 🚀 Quick Launch
 
-### 9MM Tactical Pistol
-- **Damage**: 25 per hit
-- **Critical Headshot**: 2.0x Multiplier (50 Damage) with distinct crunch audio & golden hitmarker
-- **Magazine**: 12 rounds
-- **Reserve Ammo**: 48 rounds
-- **Reload Duration**: 2.0 seconds with multi-phase mechanical audio (mag drop, insertion, slide rack)
-- **Firing Mechanics**: Semi-automatic with raycast hit detection, procedural recoil kick, iron sights alignment, muzzle flash, and dynamic crosshair spread.
+The project runs locally through Vite:
 
----
-
-## 🧟 Enemy Types
-
-1. **Normal Zombie**:
-   - **Health**: 100 HP
-   - **Speed**: Slow (~2.4 m/s)
-   - **Damage**: 10
-   - **Behavior**: Shambling patrol, spots player, pursues with obstacle avoidance, melee attacks when in range (< 1.8m).
-   - **Reward**: +20 XP, +5 Coins
-
-2. **Fast Mutant**:
-   - **Health**: 60 HP
-   - **Speed**: Fast (~4.8 m/s)
-   - **Damage**: 15
-   - **Behavior**: Aggressive predator sprint, leaps and swipes with mutated claws.
-   - **Reward**: +35 XP, +8 Coins
-
-3. **The Abomination (Boss Titan)**:
-   - **Health**: 400 HP
-   - **Speed**: Medium (~3.0 m/s)
-   - **Damage**: 25
-   - **Behavior**: Heavily armored mutate, resists knockback, slams the ground for heavy melee damage.
-   - **Spawns**: Level 5 campaign climax and every 5th wave of Endless Survival (Waves 5, 10, 15...).
-   - **Reward**: +120 XP, +45 Coins
-
----
-
-## 🎯 Game Modes
-
-### Mode A: Level Campaign Mode
-- **Level 1**: *Village Outskirts* – Eliminate 5 zombies.
-- **Level 2**: *The Silent Crossroad* – Clear 10 zombies from roads and houses.
-- **Level 3**: *Mutant Infestation* – Survive 15 hostiles; introduces Fast Mutants.
-- **Level 4**: *Dead Center* – Eliminate 20 ferocious infected in the heart of the village.
-- **Level 5**: *The Abomination* – Defeat 15 infected and destroy the mutated Boss titan.
-
-*Rewards mission XP and coins, unlocks subsequent levels in LocalStorage.*
-
-### Mode B: Endless Survival
-- Wave 1 starts with 3 zombies.
-- Hostile counts and spawn rates scale dynamically with each wave.
-- Fast mutants spawn starting at Wave 3.
-- Mutated Boss titans appear every 5th wave.
-- Live stats tracked: Wave, Remaining Enemies, Kills, Survival Time.
-- High score saved automatically to LocalStorage.
-
----
-
-## 💎 Simple RPG System & Progression
-
-- **Player XP & Leveling**:
-  - Level 1: 0 – 99 XP
-  - Level 2: 100 – 249 XP
-  - Level 3: 250 – 449 XP
-  - Level 4: 450 – 699 XP
-  - Level 5+: Scales with +350 XP per tier
-- **Level Up Bonuses**:
-  - **+10 Max HP** per level (Level 2 = 110 HP, Level 3 = 120 HP, etc.).
-  - Instantly restores vitality to full upon leveling up!
-- **Currency & LocalStorage Saving**:
-  - Coins earned from enemy drops and mission completion.
-  - Automatic persistent save of Player Level, XP, Coins, Unlocked Levels, Highest Wave, Total Kills, and Settings.
-
----
-
-## 📦 Pickups
-
-- 🩺 **Health Kit**: Restores **30 HP**.
-- 📦 **Ammo Box**: Restores **24 Pistol Bullets**.
-- 🪙 **Coin**: Grants **+10 Coins**.
-- *Pickups spawn across village hotspots and have a 38% drop rate upon eliminating infected enemies.*
-
----
-
-## 🔊 Audio Engine (Web Audio API)
-- 100% procedural Web Audio synthesis with zero external audio assets to fail or buffer.
-- Features: Gunshot punch with mechanical slide, empty dry-fire click, multi-stage reload, flesh impact, wall ricochet, zombie growls, attack swipes, player heartbeat/damage thuds, pickup chimes, wave horns, and level completion fanfares.
-
----
-
-## 🛠️ Architecture Overview
-
+```bash
+npm run dev
 ```
-src/
-├── core/
-│   ├── AudioManager.ts       # Synthesized procedural Web Audio API engine
-│   ├── InputManager.ts      # Pointer lock, WASD, mouse look, sensitivity
-│   ├── SaveManager.ts       # LocalStorage persistence for RPG stats & settings
-│   └── Types.ts             # Enums, level configs, and interfaces
-├── world/
-│   └── VillageEnvironment.ts # Low-poly village, houses, cars, barricades, colliders
-├── entities/
-│   ├── Player.ts            # First-person controller, physics, jumping, ADS
-│   ├── Weapon.ts            # 3D pistol viewmodel, raycast hit detection, recoil
-│   ├── Enemy.ts             # Zombie, Fast Mutant, Boss procedural models & AI
-│   ├── Pickup.ts            # Health, ammo, and coin bobbing 3D items
-│   └── Particles.ts         # Spark, blood, and hit effect particle system
-├── managers/
-│   ├── EnemyManager.ts      # Spawning, pooling, drops, and collision updates
-│   └── GameManager.ts       # Level & Survival state machines and RPG logic
-├── ui/
-│   └── UIManager.ts         # HUD, Main Menu, Level Select, Pause, Game Over
-├── style.css                # Dark post-apocalyptic styling, HUD & modals
-└── main.ts                  # Three.js scene bootstrap and game loop
-```
+
+Open **`http://localhost:3000/`** in your browser, click to lock pointer, and survive!
