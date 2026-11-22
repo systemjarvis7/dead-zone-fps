@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DEAD ZONE - 3D FPS Survival RPG</title>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <!-- 3D Three.js Canvas Container -->
+  <div id="game-canvas-container"></div>
+
+  <!-- Screen Damage Vignettes -->
+  <div id="damage-vignette"></div>
+  <div id="low-health-vignette"></div>
+
+  <!-- Central Dynamic Crosshair -->
+  <div id="crosshair-container">
+    <div class="crosshair-center-dot"></div>
+    <div class="crosshair-line crosshair-top"></div>
+    <div class="crosshair-line crosshair-bottom"></div>
+    <div class="crosshair-line crosshair-left"></div>
+    <div class="crosshair-line crosshair-right"></div>
+    <div id="hitmarker"></div>
+  </div>
+
+  <!-- Active In-Game HUD -->
+  <div id="game-hud" style="display: none;">
+    <!-- Top Bar: Objectives & RPG Progression -->
+    <div class="hud-top-bar">
+      <div class="hud-objective-panel">
+        <div id="hud-mode-title" class="objective-mode-title">LEVEL 1</div>
+        <div id="hud-objective-desc" class="objective-detail">KILLS: 0 / 5</div>
+      </div>
+
+      <div class="hud-rpg-panel">
+        <div id="hud-player-level" class="rpg-level-badge">LVL 1</div>
+        <div class="rpg-xp-container">
+          <div class="rpg-xp-label">
+            <span>XP</span>
+            <span id="hud-xp-text">0 / 100</span>
+          </div>
+          <div class="rpg-xp-bar-bg">
+            <div id="hud-xp-bar" class="rpg-xp-bar-fill"></div>
+          </div>
+        </div>
+        <div class="rpg-coin-counter">
+          <span>🪙</span>
+          <span id="hud-coin-text">0</span>
+        </div>
+        <div class="rpg-kills-counter">
+          <span>💀</span>
+          <span id="hud-kills-text">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notifications Feed -->
+    <div id="hud-notifications"></div>
+
+    <!-- Bottom Bar: Player Health & Weapon Ammo -->
+    <div class="hud-bottom-bar">
+      <!-- Health Panel -->
+      <div class="hud-health-panel">
+        <div class="health-header">
+          <span class="health-title">VITALITY</span>
+          <span id="hud-health-value" class="health-value">100 / 100</span>
+        </div>
+        <div class="health-bar-bg">
+          <div id="hud-health-bar" class="health-bar-fill"></div>
+        </div>
+      </div>
+
+      <!-- Weapon Panel -->
+      <div class="hud-weapon-panel">
+        <div class="weapon-name">9MM TACTICAL PISTOL</div>
+        <div class="weapon-ammo-display">
+          <span id="hud-ammo-current" class="ammo-current">12</span>
+          <span class="ammo-divider">/</span>
+          <span id="hud-ammo-reserve" class="ammo-reserve">48</span>
+        </div>
+        <div id="hud-reload-bar" class="weapon-reload-bar">
+          <div id="hud-reload-fill" class="weapon-reload-fill"></div>
+        </div>
+        <div id="hud-reload-prompt" class="reload-prompt-text">[R] RELOAD</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Click To Play / Resume Pointer Lock Overlay -->
+  <div id="click-to-play-overlay">
+    <div class="click-prompt-box">
+      <div class="click-prompt-text">CLICK TO ENGAGE</div>
+      <div class="click-sub-text">Press [ESC] to Pause | Right-Click to Aim</div>
+    </div>
+  </div>
+
+  <!-- 1. MAIN MENU OVERLAY -->
+  <div id="main-menu-overlay" class="menu-overlay active">
+    <div class="menu-card">
+      <h1 class="game-title">DEAD ZONE</h1>
+      <p class="game-subtitle">3D FPS SURVIVAL RPG</p>
+
+      <div class="button-stack">
+        <button id="btn-main-new-game" class="menu-btn primary">NEW GAME</button>
+        <button id="btn-main-continue" class="menu-btn">CONTINUE</button>
+        <button id="btn-main-modes" class="menu-btn">GAME MODES</button>
+        <button id="btn-main-controls" class="menu-btn">HOW TO PLAY</button>
+        <button id="btn-main-settings" class="menu-btn">SETTINGS</button>
+        <button id="btn-main-reset" class="menu-btn" style="color: #95a5a6; font-size: 18px; margin-top: 10px;">RESET PROGRESS</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. GAME MODES / LEVEL SELECT OVERLAY -->
+  <div id="level-select-overlay" class="menu-overlay">
+    <div class="menu-card" style="max-width: 620px;">
+      <h2 class="modal-title">SELECT MISSION</h2>
+      <p class="game-subtitle">CHOOSE YOUR OPERATIONS SECTOR</p>
+
+      <div id="level-list" class="level-selector-grid"></div>
+
+      <div style="margin: 16px 0; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 14px;">
+        <button id="btn-start-survival-direct" class="menu-btn primary" style="width: 100%;">
+          ⚡ ENDLESS SURVIVAL MODE
+        </button>
+      </div>
+
+      <div class="button-stack">
+        <button id="btn-level-select-back" class="menu-btn">BACK TO MAIN MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. PAUSE MENU OVERLAY -->
+  <div id="pause-menu-overlay" class="menu-overlay">
+    <div class="menu-card">
+      <h2 class="modal-title">GAME PAUSED</h2>
+      <p class="game-subtitle">MISSION SUSPENDED</p>
+
+      <div class="button-stack">
+        <button id="btn-pause-resume" class="menu-btn primary">RESUME</button>
+        <button id="btn-pause-restart" class="menu-btn">RESTART MISSION</button>
+        <button id="btn-pause-settings" class="menu-btn">SETTINGS</button>
+        <button id="btn-pause-main-menu" class="menu-btn">MAIN MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. LEVEL COMPLETED OVERLAY -->
+  <div id="level-complete-overlay" class="menu-overlay">
+    <div class="menu-card">
+      <h2 class="modal-title victory">MISSION ACCOMPLISHED</h2>
+      <p id="victory-subtitle" class="game-subtitle">ALL OBJECTIVES FULFILLED</p>
+
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-label">ENEMIES ELIMINATED</div>
+          <div id="victory-kills" class="stat-val">0</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">COMPLETION TIME</div>
+          <div id="victory-time" class="stat-val">00:00</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">XP REWARD</div>
+          <div id="victory-xp" class="stat-val" style="color: #2ecc71;">+0 XP</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">COINS EARNED</div>
+          <div id="victory-coins" class="stat-val" style="color: #f1c40f;">+0 🪙</div>
+        </div>
+      </div>
+
+      <div class="button-stack">
+        <button id="btn-victory-continue" class="menu-btn primary">NEXT LEVEL</button>
+        <button id="btn-victory-main-menu" class="menu-btn">MAIN MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. GAME OVER / MISSION FAILED OVERLAY -->
+  <div id="game-over-overlay" class="menu-overlay">
+    <div class="menu-card">
+      <h2 class="modal-title defeat">YOU DIED</h2>
+      <p id="game-over-subtitle" class="game-subtitle">KILLED IN ACTION</p>
+
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-label">ENEMIES KILLED</div>
+          <div id="game-over-kills" class="stat-val">0</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">SURVIVED FOR</div>
+          <div id="game-over-time" class="stat-val">00:00</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">REACHED</div>
+          <div id="game-over-level-wave" class="stat-val" style="color: #e74c3c;">LEVEL 1</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">TOTAL XP</div>
+          <div id="game-over-xp" class="stat-val" style="color: #3498db;">0 XP</div>
+        </div>
+      </div>
+
+      <div class="button-stack">
+        <button id="btn-game-over-retry" class="menu-btn primary">RETRY</button>
+        <button id="btn-game-over-main-menu" class="menu-btn">MAIN MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. SETTINGS MODAL -->
+  <div id="settings-modal" class="menu-overlay">
+    <div class="menu-card" style="max-width: 480px;">
+      <h2 class="modal-title">SETTINGS</h2>
+      <p class="game-subtitle">CALIBRATE CONTROLS & AUDIO</p>
+
+      <div class="settings-group">
+        <div class="setting-row">
+          <label for="setting-sensitivity">Mouse Sensitivity</label>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <input type="range" id="setting-sensitivity" min="5" max="50" value="22">
+            <span id="val-sensitivity" class="setting-val-tag">2.2</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <label for="setting-master-volume">Master Volume</label>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <input type="range" id="setting-master-volume" min="0" max="100" value="80">
+            <span id="val-master-volume" class="setting-val-tag">80%</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <label for="setting-sfx-volume">SFX Volume</label>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <input type="range" id="setting-sfx-volume" min="0" max="100" value="80">
+            <span id="val-sfx-volume" class="setting-val-tag">80%</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <label for="setting-fov">Field of View (FOV)</label>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <input type="range" id="setting-fov" min="60" max="95" value="75">
+            <span id="val-fov" class="setting-val-tag">75°</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <label for="setting-invert-y">Invert Mouse Y</label>
+          <input type="checkbox" id="setting-invert-y" style="width:20px; height:20px; accent-color:var(--primary-red);">
+        </div>
+      </div>
+
+      <div class="button-stack">
+        <button id="btn-settings-save" class="menu-btn primary">SAVE & CLOSE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. HOW TO PLAY MODAL -->
+  <div id="how-to-play-modal" class="menu-overlay">
+    <div class="menu-card" style="max-width: 520px;">
+      <h2 class="modal-title">SURVIVAL MANUAL</h2>
+      <p class="game-subtitle">TACTICAL CONTROLS & RECON</p>
+
+      <div class="controls-list">
+        <div class="control-item"><span>Move</span> <span class="control-key">W A S D</span></div>
+        <div class="control-item"><span>Look Around</span> <span class="control-key">Mouse</span></div>
+        <div class="control-item"><span>Fire Pistol</span> <span class="control-key">Left Mouse</span></div>
+        <div class="control-item"><span>Aim (ADS)</span> <span class="control-key">Right Mouse</span></div>
+        <div class="control-item"><span>Sprint</span> <span class="control-key">Shift</span></div>
+        <div class="control-item"><span>Jump</span> <span class="control-key">Space</span></div>
+        <div class="control-item"><span>Reload</span> <span class="control-key">R</span></div>
+        <div class="control-item"><span>Pause Game</span> <span class="control-key">ESC</span></div>
+      </div>
+
+      <div style="background: rgba(255,255,255,0.04); padding: 12px; border-radius: 4px; text-align: left; font-size: 13px; line-height: 1.5; margin-bottom: 16px;">
+        <strong style="color: #f1c40f;">SURVIVAL TIPS:</strong><br>
+        • Aim for the <strong>head</strong> for 2x critical damage.<br>
+        • Walk over <strong>Health Kits</strong> (+30 HP), <strong>Ammo Boxes</strong> (+24 Bullets), and <strong>Coins</strong> (+10).<br>
+        • Level up by earning XP to increase your <strong>Max Health</strong>.<br>
+        • Watch out for <strong>Fast Mutants</strong> and the <strong>Boss</strong> in higher waves!
+      </div>
+
+      <div class="button-stack">
+        <button id="btn-how-to-play-back" class="menu-btn primary">UNDERSTOOD</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap Script -->
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
