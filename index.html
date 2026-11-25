@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0c0e10">
   <title>DEAD ZONE V2.0 – Realistic 3D FPS Survival RPG</title>
   <link rel="stylesheet" href="/src/style.css">
 </head>
@@ -15,6 +19,18 @@
   <div id="low-health-vignette"></div>
   <div id="damage-indicator-arc">
     <div class="damage-arc-arrow"></div>
+  </div>
+
+  <!-- SNIPER SCOPE OVERLAY -->
+  <div id="sniper-scope-overlay" class="sniper-scope">
+    <div class="scope-aperture">
+      <div class="scope-crosshair-h"></div>
+      <div class="scope-crosshair-v"></div>
+      <div class="scope-range-lines"></div>
+      <div class="scope-center-dot"></div>
+      <div class="scope-info-top">4x HIGH-POWER OPTICAL SCOPE</div>
+      <div class="scope-info-bottom">CAL: .338 LAPUA MAGNUM • ELEVATION: 0.0 MIL</div>
+    </div>
   </div>
 
   <!-- Central Dynamic Crosshair & Hitmarker -->
@@ -173,34 +189,57 @@
     </div>
   </div>
 
-  <!-- 4. LEVEL COMPLETED OVERLAY -->
+  <!-- 4. LEVEL COMPLETED OVERLAY (HAUNTED COMBAT DEBRIEFING) -->
   <div id="level-complete-overlay" class="menu-overlay">
-    <div class="menu-card">
-      <h2 class="modal-title victory">SECTOR SECURED</h2>
-      <p id="victory-subtitle" class="game-subtitle">ALL HOSTILES ELIMINATED</p>
+    <div class="menu-card victory-card" style="max-width: 820px; width: 92%;">
+      <h2 class="modal-title victory haunted-title">SECTOR PURGED</h2>
+      <p id="victory-subtitle" class="game-subtitle">ZONE SECURED • ALL HOSTILES NEUTRALIZED</p>
 
-      <div class="stats-grid">
-        <div class="stat-item">
-          <div class="stat-label">HOSTILES DESTROYED</div>
-          <div id="victory-kills" class="stat-val">0</div>
+      <div class="victory-debrief-container">
+        <!-- Left: Combat Statistics -->
+        <div class="victory-stats-column">
+          <h3 class="debrief-header">COMBAT RECORD</h3>
+          <div class="stats-grid haunted-grid">
+            <div class="stat-item">
+              <div class="stat-label">HOSTILES ELIMINATED</div>
+              <div id="victory-kills" class="stat-val" style="color: #2ed573;">0</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">HEADSHOT KILLS</div>
+              <div id="victory-headshots" class="stat-val" style="color: #7bed9f;">0</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">COMBAT ACCURACY</div>
+              <div id="victory-accuracy" class="stat-val" style="color: #2ed573;">100%</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">TOTAL DAMAGE DEALT</div>
+              <div id="victory-damage" class="stat-val" style="color: #eccc68;">0</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">OPERATION TIME</div>
+              <div id="victory-time" class="stat-val">00:00</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">XP REWARD</div>
+              <div id="victory-xp" class="stat-val" style="color: #2ed573;">+0 XP</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">RECOVERED COINS</div>
+              <div id="victory-coins" class="stat-val" style="color: #ffa502;">+0 🪙</div>
+            </div>
+          </div>
         </div>
-        <div class="stat-item">
-          <div class="stat-label">OPERATIONS TIME</div>
-          <div id="victory-time" class="stat-val">00:00</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label">XP REWARD</div>
-          <div id="victory-xp" class="stat-val" style="color: #2ecc71;">+0 XP</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label">COINS RECOVERED</div>
-          <div id="victory-coins" class="stat-val" style="color: #f1c40f;">+0 🪙</div>
-        </div>
-      </div>
 
-      <div class="button-stack">
-        <button id="btn-victory-continue" class="menu-btn primary">NEXT SECTOR</button>
-        <button id="btn-victory-main-menu" class="menu-btn">MAIN MENU</button>
+        <!-- Right: Action Buttons -->
+        <div class="victory-actions-column">
+          <h3 class="debrief-header">OPERATIONS</h3>
+          <div class="button-stack">
+            <button id="btn-victory-continue" class="menu-btn primary pulse-glow">NEXT LEVEL ▶</button>
+            <button id="btn-victory-restart" class="menu-btn">↺ RESTART LEVEL</button>
+            <button id="btn-victory-main-menu" class="menu-btn">MAIN MENU</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -287,9 +326,9 @@
         <div class="setting-row">
           <label for="setting-time-of-day">Atmosphere / Time</label>
           <select id="setting-time-of-day">
-            <option value="DAY">Overcast Day</option>
-            <option value="DUSK" selected>Eerie Dusk</option>
-            <option value="NIGHT">Pitch Dark Night</option>
+            <option value="DAY" selected>Mid-Day Sunny</option>
+            <option value="SUNSET">Golden Sunset</option>
+            <option value="NIGHT">Apocalyptic Night</option>
           </select>
         </div>
 
@@ -303,7 +342,24 @@
         </div>
 
         <div class="setting-row">
-          <label for="setting-invert-y">Invert Mouse Y</label>
+          <label for="setting-touch-controls">Touch Controls</label>
+          <select id="setting-touch-controls">
+            <option value="AUTO" selected>Auto Detect (Mobile / Tablet)</option>
+            <option value="ON">Always On (Virtual Gamepad)</option>
+            <option value="OFF">Disabled (Mouse & Keys Only)</option>
+          </select>
+        </div>
+
+        <div class="setting-row">
+          <label for="setting-touch-sensitivity">Touch Look Sensitivity</label>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <input type="range" id="setting-touch-sensitivity" min="15" max="80" value="35">
+            <span id="val-touch-sensitivity" class="setting-val-tag">3.5</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <label for="setting-invert-y">Invert Y Axis</label>
           <input type="checkbox" id="setting-invert-y" style="width:20px; height:20px; accent-color:var(--primary-red);">
         </div>
       </div>
@@ -321,20 +377,20 @@
       <p class="game-subtitle">TACTICAL CONTROLS & SURVIVAL PROTOCOL</p>
 
       <div class="controls-list">
-        <div class="control-item"><span>Move / Strafe</span> <span class="control-key">W A S D</span></div>
-        <div class="control-item"><span>Aim & Look</span> <span class="control-key">Mouse</span></div>
-        <div class="control-item"><span>Fire Weapon</span> <span class="control-key">Left Mouse</span></div>
-        <div class="control-item"><span>Aim Down Sights</span> <span class="control-key">Right Mouse</span></div>
-        <div class="control-item"><span>Sprint (Stamina)</span> <span class="control-key">Shift</span></div>
-        <div class="control-item"><span>Crouch (Stealth)</span> <span class="control-key">Ctrl / C</span></div>
-        <div class="control-item"><span>Jump</span> <span class="control-key">Space</span></div>
-        <div class="control-item"><span>Reload</span> <span class="control-key">R</span></div>
-        <div class="control-item"><span>Interact</span> <span class="control-key">E</span></div>
-        <div class="control-item"><span>Flashlight Toggle</span> <span class="control-key">F</span></div>
-        <div class="control-item"><span>Melee Strike</span> <span class="control-key">V</span></div>
-        <div class="control-item"><span>Throw Grenade</span> <span class="control-key">G</span></div>
-        <div class="control-item"><span>Switch Weapon</span> <span class="control-key">1 & 2</span></div>
-        <div class="control-item"><span>Pause Game</span> <span class="control-key">ESC</span></div>
+        <div class="control-item"><span>Move / Strafe</span> <span class="control-key">W A S D / Left Thumbstick</span></div>
+        <div class="control-item"><span>Aim & Look</span> <span class="control-key">Mouse / Right Drag</span></div>
+        <div class="control-item"><span>Fire Weapon</span> <span class="control-key">Left Mouse / FIRE Btn</span></div>
+        <div class="control-item"><span>Aim Down Sights</span> <span class="control-key">Right Mouse / AIM Btn</span></div>
+        <div class="control-item"><span>Sprint</span> <span class="control-key">Shift / Push Stick Up</span></div>
+        <div class="control-item"><span>Crouch (Stealth)</span> <span class="control-key">C / CROUCH Btn</span></div>
+        <div class="control-item"><span>Jump</span> <span class="control-key">Space / JUMP Btn</span></div>
+        <div class="control-item"><span>Reload</span> <span class="control-key">R / RELOAD Btn</span></div>
+        <div class="control-item"><span>Interact / Depot</span> <span class="control-key">E / INTERACT Btn</span></div>
+        <div class="control-item"><span>Flashlight</span> <span class="control-key">F / Top Light</span></div>
+        <div class="control-item"><span>Melee Strike</span> <span class="control-key">V / MELEE Btn</span></div>
+        <div class="control-item"><span>Throw Grenade</span> <span class="control-key">G / GRENADE Btn</span></div>
+        <div class="control-item"><span>Switch Weapon</span> <span class="control-key">1, 2, 3 / Top Pills</span></div>
+        <div class="control-item"><span>Pause Game</span> <span class="control-key">ESC / PAUSE Btn</span></div>
       </div>
 
       <div style="background: rgba(255,255,255,0.04); padding: 12px; border-radius: 4px; text-align: left; font-size: 13px; line-height: 1.5; margin-bottom: 16px;">

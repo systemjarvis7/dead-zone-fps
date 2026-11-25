@@ -10,6 +10,9 @@ import { EnemyManager } from './managers/EnemyManager';
 import { GameManager } from './managers/GameManager';
 import { UIManager } from './ui/UIManager';
 import { TimeOfDay, GraphicsQuality } from './core/Types';
+import { PostProcessingManager } from './world/PostProcessing';
+import { AssetManager } from './core/AssetManager';
+import { MobileControls } from './ui/MobileControls';
 
 class GameApp {
   private renderer: THREE.WebGLRenderer;
@@ -26,6 +29,8 @@ class GameApp {
   private enemyManager: EnemyManager;
   private gameManager: GameManager;
   private uiManager: UIManager;
+  private postProcessing: PostProcessingManager;
+  private mobileControls: MobileControls;
 
   private isInGame: boolean = false;
   private menuOrbitAngle: number = 0;
@@ -36,11 +41,12 @@ class GameApp {
     // 1. Scene & Renderer setup
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 220);
+    this.scene.add(this.camera); // Ensure camera and its children (flashlight, viewmodels) are in scene graph
     this.clock = new THREE.Clock();
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -54,18 +60,39 @@ class GameApp {
 
     this.input = new InputManager(this.renderer.domElement);
     this.particles = new ParticleSystem(this.scene);
-    this.environment = new VillageEnvironment(this.scene, this.audio, settings.timeOfDay || TimeOfDay.DUSK);
-    this.weapon = new Weapon(this.camera, this.audio, this.particles);
+    this.environment = new VillageEnvironment(this.scene, this.audio, settings.timeOfDay || TimeOfDay.DAY);
+    this.weapon = new Weapon(this.camera, this.scene, this.audio, this.particles);
     this.player = new Player(this.camera, this.input, this.audio, this.environment, this.weapon);
-    this.enemyManager = new EnemyManager(this.scene, this.audio, this.environment);
+    this.enemyManager = new EnemyManager(this.scene, this.audio, this.environment, this.particles);
     this.gameManager = new GameManager(this.player, this.enemyManager, this.audio);
     this.uiManager = new UIManager(this.gameManager, this.audio, this.input, this.player);
+    this.mobileControls = new MobileControls(this.input);
+    this.mobileControls.setWeapon(this.weapon);
+    this.uiManager.setMobileControls(this.mobileControls);
+    this.postProcessing = new PostProcessingManager(this.renderer, this.scene, this.camera);
+    this.postProcessing.setQuality(settings.graphicsQuality || GraphicsQuality.HIGH);
+
+    // Asynchronously preload downloaded 3D assets, 2K PBR textures, and HDRI
+    AssetManager.getInstance()
+      .loadAll(this.renderer)
+      .then(() => {
+        this.environment.applyLoadedAssets();
+      })
+      .catch((err) => {
+        console.warn('Asset loading warning:', err);
+      });
 
     // 3. Connect callbacks
     this.setupInteractions();
 
-    // 4. Window Resize Listener
+    // 4. Window & Mobile Viewport Resize Listeners
     window.addEventListener('resize', () => this.onWindowResize());
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => this.onWindowResize(), 150);
+    });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', () => this.onWindowResize());
+    }
 
     // 5. Initial Menu Camera Pose
     this.setupMenuCamera();
@@ -80,6 +107,11 @@ class GameApp {
       this.uiManager.triggerHitmarker(isHeadshot);
     };
 
+    // Gunshot or explosion sound propagation to zombies
+    this.weapon.onGunshotFired = (pos, radius) => {
+      this.enemyManager.onGunshotFired(pos, radius);
+    };
+
     // Player damage callback -> screen damage vignette with directional arc
     this.player.onTakeDamage = (_curr, _max, attackerPos) => {
       this.uiManager.triggerDamageVignette(attackerPos);
@@ -90,9 +122,9 @@ class GameApp {
       this.uiManager.showToast(text, type);
     };
 
-    // Level Complete -> UI dialog
-    this.gameManager.onLevelComplete = (config, xp, coins) => {
-      this.uiManager.showLevelComplete(config, xp, coins);
+    // Level Complete -> UI dialog with detailed combat stats
+    this.gameManager.onLevelComplete = (config, xp, coins, detailedStats) => {
+      this.uiManager.showLevelComplete(config, xp, coins, detailedStats);
     };
 
     // Game Over -> UI dialog
@@ -106,6 +138,7 @@ class GameApp {
     };
 
     this.uiManager.onGraphicsQualityChanged = (quality) => {
+      this.postProcessing.setQuality(quality);
       if (quality === GraphicsQuality.LOW) {
         this.renderer.setPixelRatio(1.0);
         this.renderer.shadowMap.enabled = false;
@@ -113,7 +146,7 @@ class GameApp {
         this.renderer.setPixelRatio(1.0);
         this.renderer.shadowMap.enabled = true;
       } else {
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
         this.renderer.shadowMap.enabled = true;
       }
     };
@@ -162,9 +195,12 @@ class GameApp {
   }
 
   private onWindowResize(): void {
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+    const width = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+    const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(width, height);
+    this.postProcessing.setSize(width, height);
   }
 
   private animate = (): void => {
@@ -173,7 +209,7 @@ class GameApp {
     const delta = Math.min(this.clock.getDelta(), 0.1);
     const elapsedTime = this.clock.getElapsedTime();
 
-    this.environment.update(elapsedTime);
+    this.environment.update(elapsedTime, delta);
 
     if (this.isInGame) {
       this.weapon.viewmodelGroup.visible = true;
@@ -198,7 +234,15 @@ class GameApp {
 
       // Update Player, Camera, Weapon
       this.player.update(delta);
-      this.weapon.update(delta, this.input.isAiming, this.input.deltaX, this.input.deltaY, enemyTargets);
+      this.weapon.update(
+        delta,
+        this.input.isAiming,
+        this.input.deltaX,
+        this.input.deltaY,
+        enemyTargets,
+        shootables,
+        this.input.isShooting
+      );
 
       // Update Particles
       this.particles.update(delta);
@@ -208,6 +252,21 @@ class GameApp {
 
       // Update UI HUD & Radar
       this.uiManager.update(delta, this.enemyManager.enemies);
+
+      // Update Mobile Touch Gamepad
+      if (
+        this.gameManager.state.isPaused ||
+        this.gameManager.state.isGameOver ||
+        this.gameManager.state.isLevelCompleted
+      ) {
+        this.mobileControls.hide();
+      } else {
+        this.mobileControls.update(
+          this.weapon.activeWeaponIndex,
+          this.weapon.grenades,
+          this.player.hasInteractionPrompt
+        );
+      }
 
       // Reset one-shot input deltas
       this.input.resetFrameDeltas();
@@ -222,7 +281,11 @@ class GameApp {
       this.camera.lookAt(0, 1.5, 0);
     }
 
-    this.renderer.render(this.scene, this.camera);
+    if (this.postProcessing.enabled) {
+      this.postProcessing.render(delta, elapsedTime);
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
   };
 }
 

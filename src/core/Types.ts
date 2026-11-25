@@ -19,7 +19,8 @@ export enum PickupType {
 
 export enum TimeOfDay {
   DAY = 'DAY',
-  DUSK = 'DUSK',
+  SUNSET = 'SUNSET',
+  DUSK = 'SUNSET', // Backward compatibility for previously saved profiles
   NIGHT = 'NIGHT'
 }
 
@@ -40,6 +41,8 @@ export interface PlayerStats {
 
 export interface GameSettings {
   mouseSensitivity: number;
+  touchSensitivity: number;
+  touchControlsMode: 'AUTO' | 'ON' | 'OFF';
   masterVolume: number;
   sfxVolume: number;
   ambientVolume: number;
