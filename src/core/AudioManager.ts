@@ -177,6 +177,110 @@ export class AudioManager {
     metal.stop(now + 0.11);
   }
 
+  public playRifleShot(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+
+    // Rapid sharp crack
+    const bufLen = ctx.sampleRate * 0.12;
+    const buf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.015));
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'bandpass';
+    noiseFilter.frequency.setValueAtTime(3200, now);
+    noiseFilter.Q.setValueAtTime(2.0, now);
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(1.15, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(this.sfxGain);
+    noise.start(now);
+    noise.stop(now + 0.12);
+
+    // Punchy AR body thump
+    const bass = ctx.createOscillator();
+    const bassGain = ctx.createGain();
+    bass.type = 'sawtooth';
+    bass.frequency.setValueAtTime(240, now);
+    bass.frequency.exponentialRampToValueAtTime(45, now + 0.12);
+
+    bassGain.gain.setValueAtTime(0.95, now);
+    bassGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+
+    bass.connect(bassGain);
+    bassGain.connect(this.sfxGain);
+    bass.start(now);
+    bass.stop(now + 0.15);
+  }
+
+  public playSniperShot(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+
+    // Heavy long reverberating boom
+    const bufLen = ctx.sampleRate * 0.45;
+    const buf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.08));
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'lowpass';
+    noiseFilter.frequency.setValueAtTime(4500, now);
+    noiseFilter.frequency.exponentialRampToValueAtTime(350, now + 0.42);
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(1.8, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.44);
+
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(this.sfxGain);
+    noise.start(now);
+    noise.stop(now + 0.46);
+
+    // Deep sub-bass cannon thump
+    const bass = ctx.createOscillator();
+    const bassGain = ctx.createGain();
+    bass.type = 'sine';
+    bass.frequency.setValueAtTime(180, now);
+    bass.frequency.exponentialRampToValueAtTime(22, now + 0.35);
+
+    bassGain.gain.setValueAtTime(1.9, now);
+    bassGain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+
+    bass.connect(bassGain);
+    bassGain.connect(this.sfxGain);
+    bass.start(now);
+    bass.stop(now + 0.4);
+  }
+
+  public playSniperBolt(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+    // Bolt up-back
+    this.playTone(now, 1600, 0.04, 0.3, 'triangle');
+    this.playTone(now + 0.06, 900, 0.06, 0.4, 'sawtooth');
+    // Bolt forward-lock
+    this.playTone(now + 0.28, 1100, 0.05, 0.4, 'sawtooth');
+    this.playTone(now + 0.36, 2200, 0.07, 0.5, 'square');
+  }
+
   public playShellCasing(): void {
     const ctx = this.ensureContext();
     if (!ctx || !this.sfxGain) return;

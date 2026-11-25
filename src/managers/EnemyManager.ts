@@ -4,11 +4,13 @@ import { Pickup } from '../entities/Pickup';
 import { EnemyType, PickupType } from '../core/Types';
 import { AudioManager } from '../core/AudioManager';
 import { VillageEnvironment } from '../world/VillageEnvironment';
+import { ParticleSystem } from '../entities/Particles';
 
 export class EnemyManager {
   public scene: THREE.Scene;
   public audio: AudioManager;
   public environment: VillageEnvironment;
+  public particles?: ParticleSystem;
 
   public enemies: Enemy[] = [];
   public pickups: Pickup[] = [];
@@ -28,10 +30,11 @@ export class EnemyManager {
   public onEnemyAttackPlayer?: (damage: number, attackerPos: THREE.Vector3) => void;
   public onPickupCollected?: (type: PickupType) => void;
 
-  constructor(scene: THREE.Scene, audio: AudioManager, environment: VillageEnvironment) {
+  constructor(scene: THREE.Scene, audio: AudioManager, environment: VillageEnvironment, particles?: ParticleSystem) {
     this.scene = scene;
     this.audio = audio;
     this.environment = environment;
+    this.particles = particles;
   }
 
   public reset(): void {
@@ -82,6 +85,15 @@ export class EnemyManager {
     };
 
     enemy.onDeath = (killedEnemy) => {
+      // Dramatic blood explosion burst and expanding pool decal on the grass
+      if (this.particles) {
+        this.particles.spawnBloodExplosion(
+          killedEnemy.group.position.clone().add(new THREE.Vector3(0, 0.9, 0)),
+          killedEnemy.type === EnemyType.BOSS ? 60 : 38
+        );
+        this.particles.spawnBloodPool(killedEnemy.group.position.clone());
+      }
+
       if (this.onEnemyKilled) {
         this.onEnemyKilled(killedEnemy.type);
       }
@@ -126,6 +138,17 @@ export class EnemyManager {
       Math.floor(Math.random() * this.environment.pickupSpawnPoints.length)
     ];
     this.spawnRandomPickup(pt.clone());
+  }
+
+  public onGunshotFired(soundPos: THREE.Vector3, hearingRadius: number = 55): void {
+    for (const enemy of this.enemies) {
+      if (!enemy.isDead) {
+        const dist = enemy.group.position.distanceTo(soundPos);
+        if (dist <= hearingRadius) {
+          enemy.alertToSound(soundPos);
+        }
+      }
+    }
   }
 
   public getShootableEnemyObjects(): { mesh: THREE.Object3D; takeDamage: (dmg: number, isHead: boolean) => void }[] {

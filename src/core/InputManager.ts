@@ -17,6 +17,11 @@ export class InputManager {
   public quickActionPressed: boolean = false;
   public weapon1Pressed: boolean = false;
   public weapon2Pressed: boolean = false;
+  public weapon3Pressed: boolean = false;
+  public weaponCycleNext: boolean = false;
+  public weaponCyclePrev: boolean = false;
+  public grenadeHolding: boolean = false;
+  public grenadeJustReleased: boolean = false;
   public tabPressed: boolean = false;
 
   // Mouse states
@@ -30,6 +35,12 @@ export class InputManager {
   public sensitivity: number = 0.0022;
   public invertY: boolean = false;
 
+  // Mobile Touch States & Detection
+  public isMobile: boolean = false;
+  public touchControlsEnabled: boolean = false;
+  public moveVector: { x: number; y: number } = { x: 0, y: 0 };
+  public touchSensitivity: number = 0.0035;
+
   // Pointer lock
   private domElement: HTMLElement;
   private pointerLocked: boolean = false;
@@ -40,7 +51,17 @@ export class InputManager {
 
   constructor(domElement: HTMLElement) {
     this.domElement = domElement;
+    this.isMobile = this.detectMobile();
+    this.touchControlsEnabled = this.isMobile;
     this.setupListeners();
+  }
+
+  public detectMobile(): boolean {
+    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    const userAgent = navigator.userAgent || '';
+    const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(userAgent);
+    const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    return (hasTouch && isMobileUA) || (hasTouch && isCoarse);
   }
 
   private setupListeners(): void {
@@ -50,6 +71,14 @@ export class InputManager {
     window.addEventListener('mousedown', (e: MouseEvent) => this.onMouseDown(e));
     window.addEventListener('mouseup', (e: MouseEvent) => this.onMouseUp(e));
     window.addEventListener('contextmenu', (e: MouseEvent) => e.preventDefault());
+    window.addEventListener('wheel', (e: WheelEvent) => {
+      if (!this.pointerLocked) return;
+      if (e.deltaY < 0) {
+        this.weaponCyclePrev = true;
+      } else if (e.deltaY > 0) {
+        this.weaponCycleNext = true;
+      }
+    }, { passive: true });
 
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = document.pointerLockElement === this.domElement;
@@ -60,6 +89,14 @@ export class InputManager {
   }
 
   public requestPointerLock(): void {
+    if (this.isMobile && this.touchControlsEnabled) {
+      this.pointerLocked = true;
+      if (this.onPointerLockChange) {
+        this.onPointerLockChange(true);
+      }
+      return;
+    }
+
     if (!this.pointerLocked) {
       try {
         const res = this.domElement.requestPointerLock() as unknown as Promise<void> | undefined;
@@ -73,13 +110,21 @@ export class InputManager {
   }
 
   public exitPointerLock(): void {
+    if (this.isMobile && this.touchControlsEnabled) {
+      this.pointerLocked = false;
+      if (this.onPointerLockChange) {
+        this.onPointerLockChange(false);
+      }
+      return;
+    }
+
     if (this.pointerLocked && document.exitPointerLock) {
       document.exitPointerLock();
     }
   }
 
   public isLocked(): boolean {
-    return this.pointerLocked;
+    return (this.isMobile && this.touchControlsEnabled) || this.pointerLocked;
   }
 
   private onKeyDown(e: KeyboardEvent): void {
@@ -135,6 +180,7 @@ export class InputManager {
         break;
       case 'KeyG':
         this.grenadePressed = true;
+        this.grenadeHolding = true;
         break;
       case 'KeyQ':
         this.quickActionPressed = true;
@@ -145,6 +191,9 @@ export class InputManager {
       case 'Digit2':
         this.weapon2Pressed = true;
         break;
+      case 'Digit3':
+        this.weapon3Pressed = true;
+        break;
       case 'Tab':
         e.preventDefault();
         this.tabPressed = true;
@@ -154,6 +203,12 @@ export class InputManager {
 
   private onKeyUp(e: KeyboardEvent): void {
     switch (e.code) {
+      case 'KeyG':
+        if (this.grenadeHolding) {
+          this.grenadeJustReleased = true;
+          this.grenadeHolding = false;
+        }
+        break;
       case 'KeyW':
       case 'ArrowUp':
         this.forward = false;
@@ -214,9 +269,13 @@ export class InputManager {
     this.flashlightPressed = false;
     this.meleePressed = false;
     this.grenadePressed = false;
+    this.grenadeJustReleased = false;
     this.quickActionPressed = false;
     this.weapon1Pressed = false;
     this.weapon2Pressed = false;
+    this.weapon3Pressed = false;
+    this.weaponCycleNext = false;
+    this.weaponCyclePrev = false;
     this.tabPressed = false;
   }
 
@@ -228,6 +287,7 @@ export class InputManager {
     this.sprint = false;
     this.crouch = false;
     this.resetFrameDeltas();
+    this.moveVector = { x: 0, y: 0 };
     this.isAiming = false;
     this.isShooting = false;
   }

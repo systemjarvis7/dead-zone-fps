@@ -20,6 +20,11 @@ export interface GameState {
   isGameOver: boolean;
   isLevelCompleted: boolean;
   bossDefeated: boolean;
+  headshots: number;
+  grenadeKills: number;
+  shotsFired: number;
+  shotsHit: number;
+  damageDealt: number;
 }
 
 export class GameManager {
@@ -33,7 +38,19 @@ export class GameManager {
   // Callbacks
   public onStateChanged?: (state: GameState, stats: PlayerStats) => void;
   public onNotification?: (text: string, type?: 'info' | 'success' | 'warning' | 'loot') => void;
-  public onLevelComplete?: (level: LevelConfig, earnedXP: number, earnedCoins: number) => void;
+  public onLevelComplete?: (
+    level: LevelConfig,
+    earnedXP: number,
+    earnedCoins: number,
+    detailedStats: {
+      kills: number;
+      headshots: number;
+      accuracy: number;
+      damage: number;
+      time: number;
+      grenades: number;
+    }
+  ) => void;
   public onGameOver?: (reason: string, stats: { kills: number; time: number; waveOrLevel: string; xp: number }) => void;
   public onWaveStart?: (wave: number) => void;
 
@@ -58,7 +75,12 @@ export class GameManager {
       isPaused: false,
       isGameOver: false,
       isLevelCompleted: false,
-      bossDefeated: false
+      bossDefeated: false,
+      headshots: 0,
+      grenadeKills: 0,
+      shotsFired: 0,
+      shotsHit: 0,
+      damageDealt: 0
     };
 
     this.setupEvents();
@@ -72,6 +94,22 @@ export class GameManager {
 
     this.player.onDeath = () => {
       this.handleGameOver();
+    };
+
+    this.player.weapon.onShoot = () => {
+      this.state.shotsFired++;
+    };
+
+    this.player.weapon.onHitEnemy = (damage, isHeadshot) => {
+      this.state.shotsHit++;
+      this.state.damageDealt += damage;
+      if (isHeadshot) {
+        this.state.headshots++;
+      }
+    };
+
+    this.player.weapon.onGrenadeExplode = () => {
+      // Grenade explosion event
     };
 
     this.enemyManager.onEnemyAttackPlayer = (damage, attackerPos) => {
@@ -107,6 +145,11 @@ export class GameManager {
     this.state.isGameOver = false;
     this.state.isLevelCompleted = false;
     this.state.bossDefeated = false;
+    this.state.headshots = 0;
+    this.state.grenadeKills = 0;
+    this.state.shotsFired = 0;
+    this.state.shotsHit = 0;
+    this.state.damageDealt = 0;
 
     this.enemyManager.reset();
     this.enemyManager.maxActiveEnemies = config.maxActiveEnemies;
@@ -137,6 +180,11 @@ export class GameManager {
     this.state.isGameOver = false;
     this.state.isLevelCompleted = false;
     this.state.bossDefeated = false;
+    this.state.headshots = 0;
+    this.state.grenadeKills = 0;
+    this.state.shotsFired = 0;
+    this.state.shotsHit = 0;
+    this.state.damageDealt = 0;
 
     this.enemyManager.reset();
 
@@ -149,20 +197,22 @@ export class GameManager {
 
   private setupSurvivalWave(wave: number): void {
     this.state.currentWave = wave;
-    this.state.waveTotalEnemies = 3 + (wave - 1) * 3;
+    // Hardcore Scaling: 8 hostiles on Wave 1 (+5 per wave)
+    this.state.waveTotalEnemies = 8 + (wave - 1) * 5;
     this.state.waveEnemiesSpawned = 0;
     this.state.waveEnemiesKilled = 0;
 
-    this.enemyManager.maxActiveEnemies = Math.min(14, 5 + Math.floor(wave * 0.8));
-    this.enemyManager.allowFastMutants = wave >= 3;
-    this.enemyManager.allowBoss = wave % 5 === 0;
+    this.enemyManager.maxActiveEnemies = Math.min(16, 8 + Math.floor(wave * 1.4));
+    this.enemyManager.allowFastMutants = true; // Fast runner mutants active from wave 1!
+    this.enemyManager.allowBoss = wave % 3 === 0; // Boss arrives on wave 3, 6, 9...
     this.enemyManager.bossSpawned = false;
-    this.enemyManager.spawnInterval = Math.max(1.2, 2.4 - wave * 0.1);
+    this.enemyManager.spawnInterval = Math.max(0.85, 1.4 - wave * 0.08); // Rapid spawn pace
 
-    const initialCount = Math.min(3, this.enemyManager.maxActiveEnemies);
+    // Immediate spawn burst of 5-6 hostiles
+    const initialCount = Math.min(6, this.enemyManager.maxActiveEnemies);
     for (let i = 0; i < initialCount; i++) {
       let type = EnemyType.NORMAL;
-      if (this.enemyManager.allowFastMutants && Math.random() < 0.35) {
+      if (Math.random() < 0.35) {
         type = EnemyType.FAST;
       }
       this.enemyManager.spawnEnemy(type, this.player.position);
@@ -173,7 +223,7 @@ export class GameManager {
       this.enemyManager.spawnBoss(this.player.position);
       this.state.waveEnemiesSpawned++;
       if (this.onNotification) {
-        this.onNotification(`WARNING: BOSS APPROACHING!`, 'warning');
+        this.onNotification(`WARNING: BOSS MUTANT DETECTED!`, 'warning');
       }
     }
 
@@ -304,8 +354,19 @@ export class GameManager {
       this.stats = SaveManager.unlockLevel(this.stats, config.levelNumber + 1);
     }
 
+    const accuracy = this.state.shotsFired > 0
+      ? Math.round((this.state.shotsHit / this.state.shotsFired) * 100)
+      : 100;
+
     if (this.onLevelComplete) {
-      this.onLevelComplete(config, config.rewardXP, config.rewardCoins);
+      this.onLevelComplete(config, config.rewardXP, config.rewardCoins, {
+        kills: this.state.levelKills,
+        headshots: this.state.headshots,
+        accuracy,
+        damage: this.state.damageDealt,
+        time: Math.floor(this.state.survivalTime),
+        grenades: this.state.grenadeKills
+      });
     }
     this.notifyState();
   }

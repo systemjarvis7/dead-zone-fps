@@ -15,12 +15,14 @@ export class SaveManager {
 
   private static defaultSettings: GameSettings = {
     mouseSensitivity: 0.0022,
+    touchSensitivity: 0.0035,
+    touchControlsMode: 'AUTO',
     masterVolume: 0.8,
     sfxVolume: 0.8,
     ambientVolume: 0.6,
     fov: 75,
     invertY: false,
-    timeOfDay: TimeOfDay.DUSK,
+    timeOfDay: TimeOfDay.DAY,
     graphicsQuality: GraphicsQuality.HIGH
   };
 
@@ -97,7 +99,9 @@ export class SaveManager {
     try {
       const data = localStorage.getItem(SETTINGS_KEY);
       if (data) {
-        return { ...this.defaultSettings, ...JSON.parse(data) };
+        const parsed = JSON.parse(data);
+        if (parsed.timeOfDay === 'DUSK') parsed.timeOfDay = TimeOfDay.SUNSET;
+        return { ...this.defaultSettings, ...parsed };
       }
     } catch (e) {
       console.warn('Failed to load settings from localStorage', e);

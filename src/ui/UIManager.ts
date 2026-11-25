@@ -6,6 +6,7 @@ import { AudioManager } from '../core/AudioManager';
 import { InputManager } from '../core/InputManager';
 import { Player } from '../entities/Player';
 import { Enemy } from '../entities/Enemy';
+import { MobileControls } from './MobileControls';
 
 export class UIManager {
   private gameManager: GameManager;
@@ -13,6 +14,7 @@ export class UIManager {
   private input: InputManager;
   private player: Player;
   private settings: GameSettings;
+  private mobileControls?: MobileControls;
 
   // Overlays
   private gameHud: HTMLElement;
@@ -24,6 +26,7 @@ export class UIManager {
   private settingsModal: HTMLElement;
   private howToPlayModal: HTMLElement;
   private clickToPlayOverlay: HTMLElement;
+  private sniperScopeOverlay: HTMLElement;
 
   // HUD Elements
   private hudModeTitle: HTMLElement;
@@ -94,6 +97,7 @@ export class UIManager {
     this.settingsModal = document.getElementById('settings-modal')!;
     this.howToPlayModal = document.getElementById('how-to-play-modal')!;
     this.clickToPlayOverlay = document.getElementById('click-to-play-overlay')!;
+    this.sniperScopeOverlay = document.getElementById('sniper-scope-overlay')!;
 
     this.hudModeTitle = document.getElementById('hud-mode-title')!;
     this.hudObjectiveDesc = document.getElementById('hud-objective-desc')!;
@@ -135,6 +139,10 @@ export class UIManager {
     this.setupListeners();
     this.applySettingsToGame();
     this.updateHUD(this.gameManager.state, this.gameManager.stats);
+  }
+
+  public setMobileControls(mobileControls: MobileControls): void {
+    this.mobileControls = mobileControls;
   }
 
   private setupListeners(): void {
@@ -215,6 +223,11 @@ export class UIManager {
       if (this.onStartLevelRequested) this.onStartLevelRequested(nextLevel);
     });
 
+    document.getElementById('btn-victory-restart')?.addEventListener('click', () => {
+      this.levelCompleteOverlay.classList.remove('active');
+      if (this.onRestartRequested) this.onRestartRequested();
+    });
+
     document.getElementById('btn-victory-main-menu')?.addEventListener('click', () => {
       this.levelCompleteOverlay.classList.remove('active');
       if (this.onReturnToMainMenuRequested) this.onReturnToMainMenuRequested();
@@ -233,6 +246,8 @@ export class UIManager {
 
     // 6. Settings Inputs
     const sensInput = document.getElementById('setting-sensitivity') as HTMLInputElement;
+    const touchSelect = document.getElementById('setting-touch-controls') as HTMLSelectElement;
+    const touchSensInput = document.getElementById('setting-touch-sensitivity') as HTMLInputElement;
     const masterVolInput = document.getElementById('setting-master-volume') as HTMLInputElement;
     const sfxVolInput = document.getElementById('setting-sfx-volume') as HTMLInputElement;
     const ambientVolInput = document.getElementById('setting-ambient-volume') as HTMLInputElement;
@@ -243,6 +258,9 @@ export class UIManager {
 
     sensInput?.addEventListener('input', () => {
       document.getElementById('val-sensitivity')!.innerText = (parseFloat(sensInput.value) / 10).toFixed(1);
+    });
+    touchSensInput?.addEventListener('input', () => {
+      document.getElementById('val-touch-sensitivity')!.innerText = (parseFloat(touchSensInput.value) / 10).toFixed(1);
     });
     masterVolInput?.addEventListener('input', () => {
       document.getElementById('val-master-volume')!.innerText = `${masterVolInput.value}%`;
@@ -259,6 +277,8 @@ export class UIManager {
 
     document.getElementById('btn-settings-save')?.addEventListener('click', () => {
       this.settings.mouseSensitivity = parseFloat(sensInput.value) / 10000;
+      if (touchSelect) this.settings.touchControlsMode = touchSelect.value as 'AUTO' | 'ON' | 'OFF';
+      if (touchSensInput) this.settings.touchSensitivity = parseFloat(touchSensInput.value) / 10000;
       this.settings.masterVolume = parseInt(masterVolInput.value) / 100;
       this.settings.sfxVolume = parseInt(sfxVolInput.value) / 100;
       this.settings.ambientVolume = parseInt(ambientVolInput.value) / 100;
@@ -281,8 +301,12 @@ export class UIManager {
       this.input.requestPointerLock();
     });
 
-    // 8. Pointer lock changes
+    // 8. Pointer lock changes (bypassed on mobile devices)
     this.input.onPointerLockChange = (locked) => {
+      if (this.input.isMobile || this.input.touchControlsEnabled) {
+        this.clickToPlayOverlay.classList.remove('active');
+        return;
+      }
       if (!locked) {
         if (
           !this.mainMenuOverlay.classList.contains('active') &&
@@ -299,6 +323,11 @@ export class UIManager {
         this.clickToPlayOverlay.classList.remove('active');
       }
     };
+
+    // Tap to interact on mobile
+    this.interactionPromptContainer.addEventListener('click', () => {
+      this.input.interactPressed = true;
+    });
 
     // 9. Pause requested (ESC)
     this.input.onPauseRequested = () => {
@@ -341,6 +370,19 @@ export class UIManager {
 
   public applySettingsToGame(): void {
     this.input.sensitivity = this.settings.mouseSensitivity;
+    if (this.settings.touchSensitivity) {
+      this.input.touchSensitivity = this.settings.touchSensitivity;
+    }
+    if (this.settings.touchControlsMode) {
+      if (this.settings.touchControlsMode === 'ON') {
+        this.input.touchControlsEnabled = true;
+      } else if (this.settings.touchControlsMode === 'OFF') {
+        this.input.touchControlsEnabled = false;
+      } else {
+        this.input.touchControlsEnabled = this.input.isMobile;
+      }
+      this.mobileControls?.setTouchEnabled(this.input.touchControlsEnabled);
+    }
     this.input.invertY = this.settings.invertY;
     this.audio.setVolumes(this.settings.masterVolume, this.settings.sfxVolume, this.settings.ambientVolume);
     this.player.setBaseFOV(this.settings.fov);
@@ -356,6 +398,7 @@ export class UIManager {
   public showInGameHUD(): void {
     this.hideAllMenus();
     this.gameHud.style.display = 'flex';
+    this.mobileControls?.show();
   }
 
   public showLevelSelect(): void {
@@ -393,6 +436,8 @@ export class UIManager {
 
   public showSettings(): void {
     const sensInput = document.getElementById('setting-sensitivity') as HTMLInputElement;
+    const touchSelect = document.getElementById('setting-touch-controls') as HTMLSelectElement;
+    const touchSensInput = document.getElementById('setting-touch-sensitivity') as HTMLInputElement;
     const masterVolInput = document.getElementById('setting-master-volume') as HTMLInputElement;
     const sfxVolInput = document.getElementById('setting-sfx-volume') as HTMLInputElement;
     const ambientVolInput = document.getElementById('setting-ambient-volume') as HTMLInputElement;
@@ -402,6 +447,8 @@ export class UIManager {
     const invertYInput = document.getElementById('setting-invert-y') as HTMLInputElement;
 
     if (sensInput) sensInput.value = Math.round(this.settings.mouseSensitivity * 10000).toString();
+    if (touchSelect) touchSelect.value = this.settings.touchControlsMode || 'AUTO';
+    if (touchSensInput) touchSensInput.value = Math.round((this.settings.touchSensitivity || 0.0035) * 10000).toString();
     if (masterVolInput) masterVolInput.value = Math.round(this.settings.masterVolume * 100).toString();
     if (sfxVolInput) sfxVolInput.value = Math.round(this.settings.sfxVolume * 100).toString();
     if (ambientVolInput) ambientVolInput.value = Math.round((this.settings.ambientVolume ?? 0.6) * 100).toString();
@@ -413,15 +460,37 @@ export class UIManager {
     this.settingsModal.classList.add('active');
   }
 
-  public showLevelComplete(config: LevelConfig, earnedXP: number, earnedCoins: number): void {
+  public showLevelComplete(
+    config: LevelConfig,
+    earnedXP: number,
+    earnedCoins: number,
+    detailedStats?: {
+      kills: number;
+      headshots: number;
+      accuracy: number;
+      damage: number;
+      time: number;
+      grenades: number;
+    }
+  ): void {
     this.hideAllMenus();
     this.input.exitPointerLock();
 
-    document.getElementById('victory-subtitle')!.innerText = `${config.title.toUpperCase()} SECURED`;
-    document.getElementById('victory-kills')!.innerText = this.gameManager.state.levelKills.toString();
+    document.getElementById('victory-subtitle')!.innerText = `${config.title.toUpperCase()} PURGED • ZONE SECURED`;
+    document.getElementById('victory-kills')!.innerText = (detailedStats?.kills ?? this.gameManager.state.levelKills).toString();
+    
+    const headshotEl = document.getElementById('victory-headshots');
+    if (headshotEl) headshotEl.innerText = (detailedStats?.headshots ?? this.gameManager.state.headshots).toString();
 
-    const mins = Math.floor(this.gameManager.state.survivalTime / 60);
-    const secs = Math.floor(this.gameManager.state.survivalTime % 60);
+    const accuracyEl = document.getElementById('victory-accuracy');
+    if (accuracyEl) accuracyEl.innerText = `${detailedStats?.accuracy ?? 100}%`;
+
+    const damageEl = document.getElementById('victory-damage');
+    if (damageEl) damageEl.innerText = (detailedStats?.damage ?? this.gameManager.state.damageDealt).toString();
+
+    const totalTime = detailedStats?.time ?? Math.floor(this.gameManager.state.survivalTime);
+    const mins = Math.floor(totalTime / 60);
+    const secs = Math.floor(totalTime % 60);
     document.getElementById('victory-time')!.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 
     document.getElementById('victory-xp')!.innerText = `+${earnedXP} XP`;
@@ -429,9 +498,9 @@ export class UIManager {
 
     const continueBtn = document.getElementById('btn-victory-continue') as HTMLButtonElement;
     if (config.levelNumber >= 5) {
-      continueBtn.innerText = 'PLAY AGAIN';
+      continueBtn.innerText = 'PLAY AGAIN ▶';
     } else {
-      continueBtn.innerText = `NEXT: LEVEL ${config.levelNumber + 1}`;
+      continueBtn.innerText = `NEXT: LEVEL ${config.levelNumber + 1} ▶`;
     }
 
     this.levelCompleteOverlay.classList.add('active');
@@ -463,6 +532,7 @@ export class UIManager {
     this.settingsModal.classList.remove('active');
     this.howToPlayModal.classList.remove('active');
     this.clickToPlayOverlay.classList.remove('active');
+    this.mobileControls?.hide();
   }
 
   public triggerHitmarker(isHeadshot: boolean = false): void {
@@ -504,69 +574,196 @@ export class UIManager {
     }, 3000);
   }
 
-  // Draw Real-Time Radar / Minimap
+  // Draw High-Tech Tactical Sonar Sweep Radar
   private renderRadar(enemies: Enemy[]): void {
     const ctx = this.radarCtx;
     const w = this.radarCanvas.width;
     const h = this.radarCanvas.height;
     const center = w / 2;
-    const maxRange = 36; // meters shown on radar
+    const maxRange = 38; // meters shown on radar
+    const radarRadius = center - 3;
 
     ctx.clearRect(0, 0, w, h);
 
-    // Radar background grid & scan sweep
-    ctx.fillStyle = '#0f1418';
+    // 1. Radar background: Tactical circular grid
+    ctx.save();
     ctx.beginPath();
-    ctx.arc(center, center, center - 2, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.arc(center, center, radarRadius, 0, Math.PI * 2);
+    ctx.clip();
 
-    // Range rings
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.fillStyle = '#060c0e';
+    ctx.fillRect(0, 0, w, h);
+
+    // 2. Concentric Range Rings (10m, 20m, 35m)
+    ctx.strokeStyle = 'rgba(0, 255, 130, 0.16)';
     ctx.lineWidth = 1;
+
     ctx.beginPath();
-    ctx.arc(center, center, center * 0.4, 0, Math.PI * 2);
-    ctx.arc(center, center, center * 0.75, 0, Math.PI * 2);
+    ctx.arc(center, center, radarRadius * 0.32, 0, Math.PI * 2);
+    ctx.arc(center, center, radarRadius * 0.65, 0, Math.PI * 2);
+    ctx.arc(center, center, radarRadius * 0.98, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Player position & facing arrow (at center, pointing up)
-    ctx.fillStyle = '#2ecc71';
+    // Crosshairs
+    ctx.strokeStyle = 'rgba(0, 255, 130, 0.1)';
     ctx.beginPath();
-    ctx.arc(center, center, 3.5, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(center, 0);
+    ctx.lineTo(center, h);
+    ctx.moveTo(0, center);
+    ctx.lineTo(w, center);
+    ctx.stroke();
 
-    // Facing needle
-    ctx.strokeStyle = '#2ecc71';
-    ctx.lineWidth = 2;
+    // 3. 360° Rotating Sonar Sweep Beam with Phosphor Trail
+    const now = performance.now();
+    const sweepAngle = (now * 0.0024) % (Math.PI * 2);
+
+    // Phosphor wedge trail
+    const trailSegments = 8;
+    for (let i = 0; i < trailSegments; i++) {
+      const alpha = (1 - i / trailSegments) * 0.14;
+      const startSeg = sweepAngle - (i + 1) * 0.08;
+      const endSeg = sweepAngle - i * 0.08;
+      ctx.fillStyle = `rgba(0, 255, 130, ${alpha})`;
+      ctx.beginPath();
+      ctx.moveTo(center, center);
+      ctx.arc(center, center, radarRadius, startSeg, endSeg);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Bright sweep line
+    ctx.strokeStyle = 'rgba(57, 255, 120, 0.85)';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(center, center);
-    ctx.lineTo(center, center - 10);
+    ctx.lineTo(
+      center + Math.cos(sweepAngle) * radarRadius,
+      center + Math.sin(sweepAngle) * radarRadius
+    );
     ctx.stroke();
 
-    // Draw Enemies relative to player position and yaw
-    const cosY = Math.cos(this.player.yaw);
-    const sinY = Math.sin(this.player.yaw);
+    // 4. Camera look vectors (horizontal projection: forward is UP on radar, right is RIGHT)
+    const camDir = new THREE.Vector3();
+    this.player.camera.getWorldDirection(camDir);
+    camDir.y = 0;
+    if (camDir.lengthSq() > 0.0001) {
+      camDir.normalize();
+    } else {
+      camDir.set(0, 0, -1);
+    }
+    const upVec = new THREE.Vector3(0, 1, 0);
+    const camRight = new THREE.Vector3().crossVectors(camDir, upVec).normalize();
 
+    // 5. Supply Depot Marker (Cyan diamond with dot)
+    const depotPos = this.player.environment.supplyDepotPosition;
+    const toDepot = new THREE.Vector3(
+      depotPos.x - this.player.position.x,
+      0,
+      depotPos.z - this.player.position.z
+    );
+    const dDist = toDepot.length();
+
+    if (dDist < maxRange) {
+      const dRight = toDepot.dot(camRight);
+      const dFwd   = toDepot.dot(camDir);
+
+      const depotScreenX = center + (dRight / maxRange) * (radarRadius - 6);
+      const depotScreenY = center - (dFwd / maxRange) * (radarRadius - 6);
+
+      // Draw diamond
+      ctx.fillStyle = '#00f0ff';
+      ctx.beginPath();
+      ctx.moveTo(depotScreenX, depotScreenY - 4.5);
+      ctx.lineTo(depotScreenX + 4.5, depotScreenY);
+      ctx.lineTo(depotScreenX, depotScreenY + 4.5);
+      ctx.lineTo(depotScreenX - 4.5, depotScreenY);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '8px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('DEPOT', depotScreenX, depotScreenY - 6);
+    }
+
+    // 6. Hostile Blips (UP is always Ahead)
     for (const enemy of enemies) {
       if (enemy.isDead) continue;
-      const dx = enemy.group.position.x - this.player.position.x;
-      const dz = enemy.group.position.z - this.player.position.z;
-      const dist = Math.sqrt(dx * dx + dz * dz);
+      const toEnemy = new THREE.Vector3(
+        enemy.group.position.x - this.player.position.x,
+        0,
+        enemy.group.position.z - this.player.position.z
+      );
+      const dist = toEnemy.length();
 
       if (dist < maxRange) {
-        // Rotate into player local coordinates
-        const localX = dx * cosY - dz * sinY;
-        const localZ = dx * sinY + dz * cosY;
+        const eRight = toEnemy.dot(camRight);
+        const eFwd   = toEnemy.dot(camDir);
 
-        const screenX = center + (localX / maxRange) * (center - 6);
-        const screenY = center - (localZ / maxRange) * (center - 6);
+        const screenX = center + (eRight / maxRange) * (radarRadius - 6);
+        const screenY = center - (eFwd / maxRange) * (radarRadius - 6);
 
-        // Blip
-        ctx.fillStyle = enemy.type === 'BOSS' ? '#e74c3c' : (enemy.type === 'FAST' ? '#ff7675' : '#d63031');
-        ctx.beginPath();
-        ctx.arc(screenX, screenY, enemy.type === 'BOSS' ? 4.5 : 2.8, 0, Math.PI * 2);
-        ctx.fill();
+        if (enemy.type === 'BOSS') {
+          // Boss: Crimson pulsing warning icon
+          const pulse = Math.sin(now * 0.01) * 1.5 + 5.0;
+          ctx.fillStyle = 'rgba(255, 0, 70, 0.35)';
+          ctx.beginPath();
+          ctx.arc(screenX, screenY, pulse + 3, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = '#ff0044';
+          ctx.beginPath();
+          ctx.arc(screenX, screenY, pulse, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (enemy.type === 'FAST') {
+          // Fast Mutant: Blinking Amber diamond
+          const blink = Math.sin(now * 0.015) > 0 ? '#ffaa00' : '#ff7700';
+          ctx.fillStyle = blink;
+          ctx.beginPath();
+          ctx.moveTo(screenX, screenY - 3.5);
+          ctx.lineTo(screenX + 3.5, screenY);
+          ctx.lineTo(screenX, screenY + 3.5);
+          ctx.lineTo(screenX - 3.5, screenY);
+          ctx.closePath();
+          ctx.fill();
+        } else {
+          // Normal Zombie: Solid red blip with dark ring
+          ctx.fillStyle = '#ff2b2b';
+          ctx.beginPath();
+          ctx.arc(screenX, screenY, 3.2, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = '#660000';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
       }
     }
+
+    // 6. Player center icon (Chevron pointing UP)
+    ctx.fillStyle = '#39ff14';
+    ctx.beginPath();
+    ctx.moveTo(center, center - 6);
+    ctx.lineTo(center + 4, center + 4);
+    ctx.lineTo(center, center + 2);
+    ctx.lineTo(center - 4, center + 4);
+    ctx.closePath();
+    ctx.fill();
+
+    // 7. North / Forward indicator
+    ctx.fillStyle = '#39ff14';
+    ctx.font = 'bold 8px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('▲ FWD', center, 11);
+
+    ctx.restore();
+
+    // Radar bezel border
+    ctx.strokeStyle = 'rgba(57, 255, 120, 0.45)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(center, center, radarRadius, 0, Math.PI * 2);
+    ctx.stroke();
   }
 
   public updateHUD(state: GameState, stats: PlayerStats): void {
@@ -630,15 +827,16 @@ export class UIManager {
 
     // 4. Weapon Panel
     const weaponState = this.player.weapon.getState(this.input.isAiming);
-    this.hudWeaponName.innerText = weaponState.activeWeaponIndex === 1 ? '9MM TACTICAL PISTOL' : 'TACTICAL COMBAT KNIFE';
-    this.hudAmmoCurrent.innerText = weaponState.activeWeaponIndex === 1 ? weaponState.currentAmmo.toString() : '∞';
-    this.hudAmmoReserve.innerText = weaponState.activeWeaponIndex === 1 ? weaponState.reserveAmmo.toString() : 'MELEE';
+    this.hudWeaponName.innerText = weaponState.activeWeaponName;
+    this.hudAmmoCurrent.innerText = weaponState.currentAmmo.toString();
+    this.hudAmmoReserve.innerText = weaponState.reserveAmmo.toString();
 
     this.hudGrenadeDisplay.innerText = `💣 x${weaponState.grenades}`;
     this.hudFlashlightDisplay.innerText = this.player.isFlashlightOn ? '🔦 ON' : '🔦 OFF';
     this.hudFlashlightDisplay.className = `tactical-item ${this.player.isFlashlightOn ? 'active' : ''}`;
 
-    if (weaponState.activeWeaponIndex === 1 && weaponState.currentAmmo <= 3) {
+    const lowAmmoThreshold = weaponState.maxMagazine <= 5 ? 1 : 4;
+    if (weaponState.currentAmmo <= lowAmmoThreshold) {
       this.hudAmmoCurrent.classList.add('low');
       this.hudReloadPrompt.classList.add('show');
     } else {
@@ -656,18 +854,26 @@ export class UIManager {
       this.hudReloadPrompt.innerText = '[R] RELOAD';
     }
 
-    // 5. Crosshair dynamics
-    if (this.input.isAiming) {
-      this.crosshairContainer.classList.add('aiming');
+    // 5. Sniper Scope & Crosshair dynamics
+    if (weaponState.isSniperAiming) {
+      this.sniperScopeOverlay.classList.add('active');
+      this.crosshairContainer.style.display = 'none';
     } else {
-      this.crosshairContainer.classList.remove('aiming');
-    }
+      this.sniperScopeOverlay.classList.remove('active');
+      this.crosshairContainer.style.display = '';
 
-    const isMoving = this.input.forward || this.input.backward || this.input.left || this.input.right;
-    if (isMoving || this.input.sprint) {
-      this.crosshairContainer.classList.add('spread');
-    } else {
-      this.crosshairContainer.classList.remove('spread');
+      if (this.input.isAiming) {
+        this.crosshairContainer.classList.add('aiming');
+      } else {
+        this.crosshairContainer.classList.remove('aiming');
+      }
+
+      const isMoving = this.input.forward || this.input.backward || this.input.left || this.input.right;
+      if (isMoving || this.input.sprint) {
+        this.crosshairContainer.classList.add('spread');
+      } else {
+        this.crosshairContainer.classList.remove('spread');
+      }
     }
   }
 

@@ -65,6 +65,7 @@ export class Player {
   public onTakeDamage?: (currentHealth: number, maxHealth: number, attackerPos?: THREE.Vector3) => void;
   public onDeath?: () => void;
   public onInteractionPrompt?: (prompt: string) => void;
+  public hasInteractionPrompt: boolean = false;
 
   constructor(
     camera: THREE.PerspectiveCamera,
@@ -88,22 +89,20 @@ export class Player {
 
   private setupFlashlight(): void {
     this.flashlightTarget = new THREE.Object3D();
-    this.flashlightTarget.position.set(0, 0, -5);
+    this.flashlightTarget.position.set(0, 0, -10);
     this.camera.add(this.flashlightTarget);
 
-    this.flashlight = new THREE.SpotLight(0xfffaed, 0, 38, Math.PI / 6, 0.45, 1.2);
+    // High-output tactical flashlight
+    this.flashlight = new THREE.SpotLight(0xffffff, 0, 60, Math.PI / 4.5, 0.35, 1.1);
     this.flashlight.position.set(0.2, -0.15, 0.1);
     this.flashlight.target = this.flashlightTarget;
-    this.flashlight.castShadow = true;
-    this.flashlight.shadow.mapSize.width = 1024;
-    this.flashlight.shadow.mapSize.height = 1024;
-    this.flashlight.shadow.bias = -0.0002;
+    this.flashlight.castShadow = false;
     this.camera.add(this.flashlight);
   }
 
   public toggleFlashlight(): void {
     this.isFlashlightOn = !this.isFlashlightOn;
-    this.flashlight.intensity = this.isFlashlightOn ? 2.8 : 0;
+    this.flashlight.intensity = this.isFlashlightOn ? 4.8 : 0;
     this.audio.playFlashlightToggle();
   }
 
@@ -197,18 +196,27 @@ export class Player {
     const rightVec = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
 
     const moveDir = new THREE.Vector3(0, 0, 0);
-    if (this.input.forward) moveDir.add(forwardVec);
-    if (this.input.backward) moveDir.sub(forwardVec);
-    if (this.input.right) moveDir.add(rightVec);
-    if (this.input.left) moveDir.sub(rightVec);
+    const hasAnalog = this.input.moveVector && (Math.abs(this.input.moveVector.x) > 0.04 || Math.abs(this.input.moveVector.y) > 0.04);
+
+    if (hasAnalog) {
+      moveDir.addScaledVector(forwardVec, this.input.moveVector.y);
+      moveDir.addScaledVector(rightVec, this.input.moveVector.x);
+    } else {
+      if (this.input.forward) moveDir.add(forwardVec);
+      if (this.input.backward) moveDir.sub(forwardVec);
+      if (this.input.right) moveDir.add(rightVec);
+      if (this.input.left) moveDir.sub(rightVec);
+    }
 
     const isMoving = moveDir.lengthSq() > 0.001;
     if (isMoving) {
       moveDir.normalize();
     }
 
-    // 4. Sprint & Stamina Mechanics
-    const wantsToSprint = this.input.sprint && !this.input.isAiming && this.input.forward && !this.isCrouching;
+    // 4. Sprint & Stamina Mechanics (supports keyboard shift and mobile joystick push-forward)
+    const isMovingForward = this.input.forward || (hasAnalog && this.input.moveVector.y > 0.35);
+    const wantsToSprint = (this.input.sprint || (hasAnalog && this.input.moveVector.y > 0.75)) &&
+      !this.input.isAiming && isMovingForward && !this.isCrouching;
     let isSprinting = false;
 
     if (wantsToSprint && this.stamina > 5) {
@@ -250,9 +258,20 @@ export class Player {
     this.position.z += this.velocity.z * delta;
     this.position.y += this.velocity.y * delta;
 
-    // Ground check & Landing Dip
-    if (this.position.y <= this.currentEyeHeight) {
-      this.position.y = this.currentEyeHeight;
+    // Ground check & Stairs step-up (supporting elevated platforms & watchtower stairs)
+    const feetY = this.position.y - this.currentEyeHeight;
+    const groundLevel = this.environment.getGroundHeightAt(this.position.x, this.position.z, feetY);
+    let targetFloorY = groundLevel + this.currentEyeHeight;
+
+    if (isMoving) {
+      const stepCheck = this.environment.getGroundHeightAt(this.position.x, this.position.z, feetY + 0.38);
+      if (stepCheck > groundLevel && stepCheck - groundLevel <= 0.45) {
+        targetFloorY = stepCheck + this.currentEyeHeight;
+      }
+    }
+
+    if (this.position.y <= targetFloorY + 0.08) {
+      this.position.y = targetFloorY;
       this.velocity.y = 0;
       this.isGrounded = true;
 
@@ -260,15 +279,20 @@ export class Player {
         this.landingDip = 0.12; // Camera dips on landing
         this.audio.playLanding();
       }
+    } else {
+      if (this.position.y > targetFloorY + 0.15) {
+        this.isGrounded = false;
+      }
     }
 
     if (this.landingDip > 0) {
       this.landingDip = Math.max(0, this.landingDip - delta * 0.8);
     }
 
-    // 7. Wall Collision Check
+    // 7. Wall Collision Check at Player Mid-Height
+    const midY = this.position.y - this.currentEyeHeight * 0.5;
     const colResult = this.environment.checkSphereCollision(
-      new THREE.Vector3(this.position.x, 1.0, this.position.z),
+      new THREE.Vector3(this.position.x, midY, this.position.z),
       this.playerRadius
     );
     if (colResult.hit) {
@@ -334,10 +358,17 @@ export class Player {
       'YXZ'
     );
 
-    // 12. Dynamic ADS FOV
-    const targetFOV = this.input.isAiming ? this.adsFOV : this.baseFOV;
+    // 12. Dynamic ADS FOV (Sniper scope 4x zoom)
+    let targetFOV = this.baseFOV;
+    if (this.input.isAiming) {
+      if (this.weapon.activeWeaponIndex === 3) {
+        targetFOV = 20; // 4x Sniper Scope Zoom
+      } else {
+        targetFOV = this.adsFOV;
+      }
+    }
     if (Math.abs(this.camera.fov - targetFOV) > 0.1) {
-      this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFOV, 14 * delta);
+      this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFOV, 16 * delta);
       this.camera.updateProjectionMatrix();
     }
 
@@ -354,34 +385,71 @@ export class Player {
     if (this.input.weapon2Pressed) {
       this.weapon.setWeapon(2);
     }
-    if (this.input.grenadePressed) {
+    if (this.input.weapon3Pressed) {
+      this.weapon.setWeapon(3);
+    }
+    if (this.input.weaponCycleNext) {
+      this.weapon.cycleWeapon(true);
+    }
+    if (this.input.weaponCyclePrev) {
+      this.weapon.cycleWeapon(false);
+    }
+
+    // Grenade Pre-throw Trajectory Arc & Throw
+    if (this.input.grenadeHolding) {
+      this.weapon.updateGrenadeTrajectory(true, this.environment);
+    } else if (this.input.grenadeJustReleased) {
       this.weapon.throwGrenade();
+      this.weapon.updateGrenadeTrajectory(false, this.environment);
+    } else {
+      this.weapon.updateGrenadeTrajectory(false, this.environment);
     }
 
-    // 14. World Interaction Prompt Check (Door / Crate / Generator)
-    const interaction = this.environment.checkInteractionTarget(this.position);
-    if (this.onInteractionPrompt) {
-      this.onInteractionPrompt(interaction.prompt);
-    }
+    // 14. World Interaction Prompt Check (Door / Crate / Generator / Supply Depot)
+    let promptText = '';
+    const depotPos = this.environment.supplyDepotPosition;
+    const distToDepot = Math.hypot(this.position.x - depotPos.x, this.position.z - depotPos.z);
 
-    if (this.input.interactPressed && interaction.targetType) {
-      const res = this.environment.interactWith({
-        targetType: interaction.targetType,
-        targetObj: interaction.targetObj
-      });
-
-      if (res.loot) {
-        if (res.loot === 'ammo') {
-          this.weapon.addAmmo(24);
+    if (distToDepot < 2.8) {
+      if (this.environment.supplyCooldown <= 0) {
+        promptText = '[E] RESUPPLY WEAPONS & GRENADES';
+        if (this.input.interactPressed) {
+          this.weapon.resupplyAll();
+          this.environment.supplyCooldown = this.environment.supplyCooldownMax;
           this.audio.playPickup(2 as any);
-        } else if (res.loot === 'health') {
-          this.heal(40);
-          this.audio.playPickup(1 as any);
-        } else if (res.loot === 'grenade') {
-          this.weapon.addGrenades(2);
-          this.audio.playPickup(4 as any);
+        }
+      } else {
+        const cd = Math.ceil(this.environment.supplyCooldown);
+        promptText = `SUPPLY DEPOT CHARGING (${cd}s)`;
+      }
+    } else {
+      const interaction = this.environment.checkInteractionTarget(this.position);
+      promptText = interaction.prompt;
+
+      if (this.input.interactPressed && interaction.targetType) {
+        const res = this.environment.interactWith({
+          targetType: interaction.targetType,
+          targetObj: interaction.targetObj
+        });
+
+        if (res.loot) {
+          if (res.loot === 'ammo') {
+            this.weapon.addAmmo(30);
+            this.audio.playPickup(2 as any);
+          } else if (res.loot === 'health') {
+            this.heal(40);
+            this.audio.playPickup(1 as any);
+          } else if (res.loot === 'grenade') {
+            this.weapon.addGrenades(2);
+            this.audio.playPickup(4 as any);
+          }
         }
       }
+    }
+
+    this.hasInteractionPrompt = Boolean(promptText);
+    if (this.onInteractionPrompt) {
+      this.onInteractionPrompt(promptText);
     }
   }
 }
